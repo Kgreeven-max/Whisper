@@ -79,7 +79,7 @@ services:
       - FLASK_ENV=${FLASK_ENV:-production}
       - PYTHONUNBUFFERED=1
       - DATABASE_URL=postgresql://${POSTGRES_USER:-meeting_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-meetings}
-      - SECRET_KEY=${SECRET_KEY:-please_change_this_secret_key}
+      - SECRET_KEY=${SECRET_KEY:?Please set SECRET_KEY in .env file}
     volumes:
       - ./uploads:/app/uploads
     depends_on:

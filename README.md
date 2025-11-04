@@ -35,49 +35,66 @@ A complete meeting transcription and analysis system that runs on your VPS, simi
 
 ### Prerequisites
 
-- Ubuntu/Debian VPS with at least 4GB RAM
+- Ubuntu/Debian VPS with at least 8GB RAM (4GB minimum)
 - Docker and Docker Compose installed
 - At least 20GB free disk space
 
 ### Installation
 
-1. **Clone or upload the repository to your VPS:**
+1. **Clone the repository:**
 
 ```bash
 cd /opt
-git clone <your-repo-url> meeting-transcriber
+git clone https://github.com/Kgreeven-max/Whisper.git meeting-transcriber
 cd meeting-transcriber
+git checkout claude/notion-meeting-transcriber-vps-011CUnFKEU8KLtfhEMdsKMdG
 ```
 
-2. **Create necessary directories:**
+2. **⚠️ REQUIRED: Create .env file with secure passwords:**
 
 ```bash
-mkdir -p uploads data
-chmod 755 uploads data
+# Copy example file
+cp .env.example .env
+
+# Generate secure password
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+
+# Generate secret key
+python3 -c "import secrets; print(secrets.token_hex(32))"
+
+# Edit .env and replace POSTGRES_PASSWORD and SECRET_KEY with generated values
+nano .env
 ```
 
-3. **Start the services:**
+**CRITICAL:** Replace `REPLACE_WITH_SECURE_PASSWORD` and `REPLACE_WITH_SECURE_SECRET_KEY` with the generated values!
+
+3. **Deploy (automated):**
 
 ```bash
+./deploy.sh
+```
+
+The deployment script will:
+- Check your .env file (will error if not configured)
+- Install Docker if needed
+- Start all services
+- Pull AI model
+- Verify everything is running
+
+**OR Manual deployment:**
+
+```bash
+# Start services
 docker-compose up -d
+
+# Pull LLM model (recommended for 8GB RAM)
+docker exec meeting-ollama ollama pull phi
 ```
 
-4. **Wait for services to initialize (first run takes ~5-10 minutes):**
-
-```bash
-docker-compose logs -f
-```
-
-5. **Pull the LLM model for Ollama:**
-
-```bash
-docker exec -it meeting-ollama ollama pull llama2
-```
-
-You can also use other models:
-- `ollama pull mistral` (7B parameters, faster)
-- `ollama pull phi` (2.7B parameters, very fast)
-- `ollama pull mixtral` (47B parameters, more accurate)
+Other models:
+- `phi` (2.7B parameters, very fast) ← **Recommended for 8GB RAM**
+- `mistral` (7B parameters, balanced)
+- `llama2` (7B parameters, good quality)
 
 6. **Access the application:**
 

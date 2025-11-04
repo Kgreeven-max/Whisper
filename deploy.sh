@@ -10,6 +10,7 @@ echo ""
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Check if running as root
@@ -23,6 +24,50 @@ fi
 command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
+
+# Step 0: Check environment configuration
+echo -e "${YELLOW}Step 0: Checking environment configuration...${NC}"
+
+if [ ! -f .env ]; then
+    echo -e "${RED}ERROR: .env file not found!${NC}"
+    echo ""
+    echo "You must create a .env file with secure passwords before deploying."
+    echo ""
+    echo "Quick setup:"
+    echo "  1. Copy the example file:"
+    echo -e "     ${BLUE}cp .env.example .env${NC}"
+    echo ""
+    echo "  2. Generate secure password:"
+    echo -e "     ${BLUE}python3 -c \"import secrets; print(secrets.token_urlsafe(32))\"${NC}"
+    echo ""
+    echo "  3. Generate secret key:"
+    echo -e "     ${BLUE}python3 -c \"import secrets; print(secrets.token_hex(32))\"${NC}"
+    echo ""
+    echo "  4. Edit .env and replace POSTGRES_PASSWORD and SECRET_KEY:"
+    echo -e "     ${BLUE}nano .env${NC}"
+    echo ""
+    echo "  5. Run this script again"
+    echo ""
+    exit 1
+fi
+
+# Check if passwords are still placeholder values
+if grep -q "REPLACE_WITH_SECURE_PASSWORD" .env 2>/dev/null || grep -q "REPLACE_WITH_SECURE_SECRET_KEY" .env 2>/dev/null; then
+    echo -e "${RED}ERROR: .env file contains placeholder values!${NC}"
+    echo ""
+    echo "You must replace the placeholder passwords with secure values."
+    echo ""
+    echo "Generate secure values:"
+    echo -e "  ${BLUE}python3 -c \"import secrets; print(secrets.token_urlsafe(32))\"${NC}"
+    echo -e "  ${BLUE}python3 -c \"import secrets; print(secrets.token_hex(32))\"${NC}"
+    echo ""
+    echo "Then edit .env and replace the placeholders"
+    echo ""
+    exit 1
+fi
+
+echo -e "${GREEN}✓ Environment file configured${NC}"
+echo ""
 
 # Step 1: Check prerequisites
 echo -e "${YELLOW}Step 1: Checking prerequisites...${NC}"
