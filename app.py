@@ -22,7 +22,7 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-change-in-product
 app.config['JWT_SECRET'] = os.getenv('JWT_SECRET', os.getenv('SECRET_KEY', 'dev-jwt-secret-change-in-production'))  # JWT signing key
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 3600  # 1 hour
 app.config['JWT_REFRESH_TOKEN_EXPIRES'] = 2592000  # 30 days
-app.config['MAX_CONCURRENT_JOBS'] = int(os.getenv('MAX_CONCURRENT_JOBS', '2'))  # Max concurrent transcription jobs (for 8GB RAM)
+app.config['MAX_CONCURRENT_JOBS'] = int(os.getenv('MAX_CONCURRENT_JOBS', '4'))  # Max concurrent transcription jobs (for 8GB RAM)
 
 # Create upload directory if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -159,9 +159,9 @@ def init_db_pool():
     """Initialize database connection pool"""
     global db_pool
     if db_pool is None:
-        db_pool = psycopg2.pool.SimpleConnectionPool(
-            minconn=1,
-            maxconn=20,  # Max 20 connections (PostgreSQL default is 100)
+        db_pool = psycopg2.pool.ThreadedConnectionPool(
+            minconn=2,
+            maxconn=30,  # Increased for 4 concurrent users (PostgreSQL max is 50)
             dsn=app.config['DATABASE_URL']
         )
 
