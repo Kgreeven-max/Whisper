@@ -13,6 +13,7 @@ app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = '/app/uploads'
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max
 app.config['DATABASE_URL'] = os.getenv('DATABASE_URL', 'postgresql://meeting_user:meeting_pass_change_in_production@postgres:5432/meetings')
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-change-in-production')  # Required for sessions
 
 # Create upload directory if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -97,11 +98,13 @@ def init_db():
 def index():
     """Main dashboard showing all meetings"""
     conn = get_db()
-    c = conn.cursor()
-    c.execute('SELECT * FROM meetings ORDER BY date DESC LIMIT 50')
-    meetings = c.fetchall()
-    conn.close()
-    return render_template('dashboard.html', meetings=meetings)
+    try:
+        c = conn.cursor()
+        c.execute('SELECT * FROM meetings ORDER BY date DESC LIMIT 50')
+        meetings = c.fetchall()
+        return render_template('dashboard.html', meetings=meetings)
+    finally:
+        conn.close()
 
 @app.route('/upload', methods=['GET', 'POST'])
 def upload_meeting():
@@ -129,15 +132,17 @@ def upload_meeting():
 
         # Create initial database entry
         conn = get_db()
-        c = conn.cursor()
-        c.execute('''
-            INSERT INTO meetings (title, audio_file, attendees, tags, status)
-            VALUES (%s, %s, %s, %s, 'processing')
-            RETURNING id
-        ''', (title, filename, attendees, tags))
-        meeting_id = c.fetchone()[0]
-        conn.commit()
-        conn.close()
+        try:
+            c = conn.cursor()
+            c.execute('''
+                INSERT INTO meetings (title, audio_file, attendees, tags, status)
+                VALUES (%s, %s, %s, %s, 'processing')
+                RETURNING id
+            ''', (title, filename, attendees, tags))
+            meeting_id = c.fetchone()[0]
+            conn.commit()
+        finally:
+            conn.close()
 
         # Process the meeting asynchronously
         try:
@@ -145,10 +150,12 @@ def upload_meeting():
         except Exception as e:
             # Update status to error
             conn = get_db()
-            c = conn.cursor()
-            c.execute('UPDATE meetings SET status = %s WHERE id = %s', ('error', meeting_id))
-            conn.commit()
-            conn.close()
+            try:
+                c = conn.cursor()
+                c.execute('UPDATE meetings SET status = %s WHERE id = %s', ('error', meeting_id))
+                conn.commit()
+            finally:
+                conn.close()
             return jsonify({'error': str(e)}), 500
 
         return redirect(url_for('view_meeting', meeting_id=meeting_id))
@@ -180,11 +187,13 @@ def process_meeting_audio(audio_path, meeting_id, title):
     except Exception as e:
         print(f"Transcription error: {e}")
         conn = get_db()
-        c = conn.cursor()
-        c.execute('UPDATE meetings SET status = %s, transcript = %s WHERE id = %s',
-                  ('error', f'Transcription failed: {str(e)}', meeting_id))
-        conn.commit()
-        conn.close()
+        try:
+            c = conn.cursor()
+            c.execute('UPDATE meetings SET status = %s, transcript = %s WHERE id = %s',
+                      ('error', f'Transcription failed: {str(e)}', meeting_id))
+            conn.commit()
+        finally:
+            conn.close()
         return
 
     # Step 2: Generate summary with Ollama (local LLM)
@@ -246,15 +255,17 @@ DECISIONS:
 
     # Step 3: Update database with results
     conn = get_db()
-    c = conn.cursor()
-    c.execute('''
-        UPDATE meetings
-        SET transcript = %s, summary = %s, key_points = %s, action_items = %s, decisions = %s, status = 'completed'
-        WHERE id = %s
-    ''', (transcript, summary, json.dumps(key_points), json.dumps(action_items),
-          json.dumps(decisions), meeting_id))
-    conn.commit()
-    conn.close()
+    try:
+        c = conn.cursor()
+        c.execute('''
+            UPDATE meetings
+            SET transcript = %s, summary = %s, key_points = %s, action_items = %s, decisions = %s, status = 'completed'
+            WHERE id = %s
+        ''', (transcript, summary, json.dumps(key_points), json.dumps(action_items),
+              json.dumps(decisions), meeting_id))
+        conn.commit()
+    finally:
+        conn.close()
 
     print(f"Meeting {meeting_id} processed successfully")
 
@@ -299,21 +310,23 @@ def parse_analysis(text):
 def view_meeting(meeting_id):
     """View individual meeting details"""
     conn = get_db()
-    c = conn.cursor()
-    c.execute('SELECT * FROM meetings WHERE id = %s', (meeting_id,))
-    meeting = c.fetchone()
-    conn.close()
+    try:
+        c = conn.cursor()
+        c.execute('SELECT * FROM meetings WHERE id = %s', (meeting_id,))
+        meeting = c.fetchone()
 
-    if not meeting:
-        return "Meeting not found", 404
+        if not meeting:
+            return "Meeting not found", 404
 
-    # Parse JSON fields
-    meeting_data = dict(meeting)
-    meeting_data['key_points'] = json.loads(meeting['key_points'] or '[]')
-    meeting_data['action_items'] = json.loads(meeting['action_items'] or '[]')
-    meeting_data['decisions'] = json.loads(meeting['decisions'] or '[]')
+        # Parse JSON fields
+        meeting_data = dict(meeting)
+        meeting_data['key_points'] = json.loads(meeting['key_points'] or '[]')
+        meeting_data['action_items'] = json.loads(meeting['action_items'] or '[]')
+        meeting_data['decisions'] = json.loads(meeting['decisions'] or '[]')
 
-    return render_template('meeting.html', meeting=meeting_data)
+        return render_template('meeting.html', meeting=meeting_data)
+    finally:
+        conn.close()
 
 @app.route('/meeting/<int:meeting_id>/edit', methods=['POST'])
 def edit_meeting(meeting_id):
@@ -321,56 +334,60 @@ def edit_meeting(meeting_id):
     data = request.json
 
     conn = get_db()
-    c = conn.cursor()
+    try:
+        c = conn.cursor()
 
-    # Update fields
-    fields = []
-    values = []
+        # Update fields
+        fields = []
+        values = []
 
-    if 'title' in data:
-        fields.append('title = %s')
-        values.append(data['title'])
-    if 'summary' in data:
-        fields.append('summary = %s')
-        values.append(data['summary'])
-    if 'attendees' in data:
-        fields.append('attendees = %s')
-        values.append(data['attendees'])
-    if 'tags' in data:
-        fields.append('tags = %s')
-        values.append(data['tags'])
+        if 'title' in data:
+            fields.append('title = %s')
+            values.append(data['title'])
+        if 'summary' in data:
+            fields.append('summary = %s')
+            values.append(data['summary'])
+        if 'attendees' in data:
+            fields.append('attendees = %s')
+            values.append(data['attendees'])
+        if 'tags' in data:
+            fields.append('tags = %s')
+            values.append(data['tags'])
 
-    if fields:
-        values.append(meeting_id)
-        query = f"UPDATE meetings SET {', '.join(fields)} WHERE id = %s"
-        c.execute(query, values)
-        conn.commit()
+        if fields:
+            values.append(meeting_id)
+            query = f"UPDATE meetings SET {', '.join(fields)} WHERE id = %s"
+            c.execute(query, values)
+            conn.commit()
 
-    conn.close()
-    return jsonify({'success': True})
+        return jsonify({'success': True})
+    finally:
+        conn.close()
 
 @app.route('/meeting/<int:meeting_id>/delete', methods=['POST'])
 def delete_meeting(meeting_id):
     """Delete a meeting"""
     conn = get_db()
-    c = conn.cursor()
+    try:
+        c = conn.cursor()
 
-    # Get audio file path
-    c.execute('SELECT audio_file FROM meetings WHERE id = %s', (meeting_id,))
-    result = c.fetchone()
+        # Get audio file path
+        c.execute('SELECT audio_file FROM meetings WHERE id = %s', (meeting_id,))
+        result = c.fetchone()
 
-    if result and result['audio_file']:
-        # Delete audio file
-        audio_path = os.path.join(app.config['UPLOAD_FOLDER'], result['audio_file'])
-        if os.path.exists(audio_path):
-            os.remove(audio_path)
+        if result and result['audio_file']:
+            # Delete audio file
+            audio_path = os.path.join(app.config['UPLOAD_FOLDER'], result['audio_file'])
+            if os.path.exists(audio_path):
+                os.remove(audio_path)
 
-    # Delete database entry
-    c.execute('DELETE FROM meetings WHERE id = %s', (meeting_id,))
-    conn.commit()
-    conn.close()
+        # Delete database entry
+        c.execute('DELETE FROM meetings WHERE id = %s', (meeting_id,))
+        conn.commit()
 
-    return redirect(url_for('index'))
+        return redirect(url_for('index'))
+    finally:
+        conn.close()
 
 @app.route('/api/search', methods=['POST'])
 def search_meetings():
@@ -378,54 +395,58 @@ def search_meetings():
     query = request.json.get('query', '')
 
     conn = get_db()
-    c = conn.cursor()
-    c.execute('''
-        SELECT id, title, date, summary
-        FROM meetings
-        WHERE transcript LIKE %s OR summary LIKE %s OR title LIKE %s
-        ORDER BY date DESC
-        LIMIT 20
-    ''', (f'%{query}%', f'%{query}%', f'%{query}%'))
+    try:
+        c = conn.cursor()
+        c.execute('''
+            SELECT id, title, date, summary
+            FROM meetings
+            WHERE transcript LIKE %s OR summary LIKE %s OR title LIKE %s
+            ORDER BY date DESC
+            LIMIT 20
+        ''', (f'%{query}%', f'%{query}%', f'%{query}%'))
 
-    results = [dict(row) for row in c.fetchall()]
-    conn.close()
-
-    return jsonify(results)
+        results = [dict(row) for row in c.fetchall()]
+        return jsonify(results)
+    finally:
+        conn.close()
 
 @app.route('/api/stats')
 def get_stats():
     """Get statistics about meetings"""
     conn = get_db()
-    c = conn.cursor()
+    try:
+        c = conn.cursor()
 
-    c.execute('SELECT COUNT(*) as total FROM meetings')
-    total = c.fetchone()['total']
+        c.execute('SELECT COUNT(*) as total FROM meetings')
+        total = c.fetchone()['total']
 
-    c.execute("SELECT COUNT(*) as completed FROM meetings WHERE status = 'completed'")
-    completed = c.fetchone()['completed']
+        c.execute("SELECT COUNT(*) as completed FROM meetings WHERE status = 'completed'")
+        completed = c.fetchone()['completed']
 
-    c.execute("SELECT COUNT(*) as processing FROM meetings WHERE status = 'processing'")
-    processing = c.fetchone()['processing']
+        c.execute("SELECT COUNT(*) as processing FROM meetings WHERE status = 'processing'")
+        processing = c.fetchone()['processing']
 
-    conn.close()
-
-    return jsonify({
-        'total': total,
-        'completed': completed,
-        'processing': processing
-    })
+        return jsonify({
+            'total': total,
+            'completed': completed,
+            'processing': processing
+        })
+    finally:
+        conn.close()
 
 @app.route('/download/<int:meeting_id>')
 def download_transcript(meeting_id):
     """Download meeting transcript as markdown"""
     conn = get_db()
-    c = conn.cursor()
-    c.execute('SELECT * FROM meetings WHERE id = %s', (meeting_id,))
-    meeting = c.fetchone()
-    conn.close()
+    try:
+        c = conn.cursor()
+        c.execute('SELECT * FROM meetings WHERE id = %s', (meeting_id,))
+        meeting = c.fetchone()
 
-    if not meeting:
-        return "Meeting not found", 404
+        if not meeting:
+            return "Meeting not found", 404
+    finally:
+        conn.close()
 
     # Generate markdown content
     key_points = json.loads(meeting['key_points'] or '[]')
@@ -494,15 +515,17 @@ def start_live_session():
 
     # Create meeting entry in database
     conn = get_db()
-    c = conn.cursor()
-    c.execute('''
-        INSERT INTO meetings (title, status)
-        VALUES (%s, 'recording')
-        RETURNING id
-    ''', (title,))
-    meeting_id = c.fetchone()[0]
-    conn.commit()
-    conn.close()
+    try:
+        c = conn.cursor()
+        c.execute('''
+            INSERT INTO meetings (title, status)
+            VALUES (%s, 'recording')
+            RETURNING id
+        ''', (title,))
+        meeting_id = c.fetchone()[0]
+        conn.commit()
+    finally:
+        conn.close()
 
     # Store session info
     live_sessions[session_id] = {
@@ -562,11 +585,13 @@ def receive_live_chunk():
                 full_transcript = ' '.join(live_sessions[session_id]['transcript_parts'])
 
                 conn = get_db()
-                c = conn.cursor()
-                c.execute('UPDATE meetings SET transcript = %s WHERE id = %s',
-                          (full_transcript, meeting_id))
-                conn.commit()
-                conn.close()
+                try:
+                    c = conn.cursor()
+                    c.execute('UPDATE meetings SET transcript = %s WHERE id = %s',
+                              (full_transcript, meeting_id))
+                    conn.commit()
+                finally:
+                    conn.close()
 
                 return jsonify({'success': True, 'text': text})
 
@@ -650,15 +675,17 @@ DECISIONS:
 
     # Update database with final results
     conn = get_db()
-    c = conn.cursor()
-    c.execute('''
-        UPDATE meetings
-        SET transcript = %s, summary = %s, key_points = %s, action_items = %s, decisions = %s, status = 'completed'
-        WHERE id = %s
-    ''', (full_transcript, summary, json.dumps(key_points), json.dumps(action_items),
-          json.dumps(decisions), meeting_id))
-    conn.commit()
-    conn.close()
+    try:
+        c = conn.cursor()
+        c.execute('''
+            UPDATE meetings
+            SET transcript = %s, summary = %s, key_points = %s, action_items = %s, decisions = %s, status = 'completed'
+            WHERE id = %s
+        ''', (full_transcript, summary, json.dumps(key_points), json.dumps(action_items),
+              json.dumps(decisions), meeting_id))
+        conn.commit()
+    finally:
+        conn.close()
 
     # Clean up chunk files
     for chunk_path in session['chunks']:
