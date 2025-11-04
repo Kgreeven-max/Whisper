@@ -762,6 +762,7 @@ def view_meeting(meeting_id):
         conn.close()
 
 @app.route('/meeting/<int:meeting_id>/edit', methods=['POST'])
+@jwt_required
 def edit_meeting(meeting_id):
     """Edit meeting details"""
     data = request.json
@@ -789,7 +790,8 @@ def edit_meeting(meeting_id):
 
         if fields:
             values.append(meeting_id)
-            query = f"UPDATE meetings SET {', '.join(fields)} WHERE id = %s"
+            values.append(request.current_user['user_id'])
+            query = f"UPDATE meetings SET {', '.join(fields)} WHERE id = %s AND user_id = %s"
             c.execute(query, values)
             conn.commit()
 
@@ -798,24 +800,28 @@ def edit_meeting(meeting_id):
         conn.close()
 
 @app.route('/meeting/<int:meeting_id>/delete', methods=['POST'])
+@jwt_required
 def delete_meeting(meeting_id):
     """Delete a meeting"""
     conn = get_db()
     try:
         c = conn.cursor()
 
-        # Get audio file path
-        c.execute('SELECT audio_file FROM meetings WHERE id = %s', (meeting_id,))
+        # Get audio file path (verify user owns this meeting)
+        c.execute('SELECT audio_file FROM meetings WHERE id = %s AND user_id = %s', (meeting_id, request.current_user['user_id']))
         result = c.fetchone()
 
-        if result and result['audio_file']:
+        if not result:
+            return jsonify({'error': 'Meeting not found or access denied'}), 404
+
+        if result['audio_file']:
             # Delete audio file
             audio_path = os.path.join(app.config['UPLOAD_FOLDER'], result['audio_file'])
             if os.path.exists(audio_path):
                 os.remove(audio_path)
 
-        # Delete database entry
-        c.execute('DELETE FROM meetings WHERE id = %s', (meeting_id,))
+        # Delete database entry (user_id already verified above)
+        c.execute('DELETE FROM meetings WHERE id = %s AND user_id = %s', (meeting_id, request.current_user['user_id']))
         conn.commit()
 
         return redirect(url_for('index'))
@@ -823,6 +829,7 @@ def delete_meeting(meeting_id):
         conn.close()
 
 @app.route('/api/search', methods=['POST'])
+@jwt_required
 def search_meetings():
     """Search through meeting transcripts"""
     query = request.json.get('query', '')
@@ -833,10 +840,10 @@ def search_meetings():
         c.execute('''
             SELECT id, title, date, summary
             FROM meetings
-            WHERE transcript LIKE %s OR summary LIKE %s OR title LIKE %s
+            WHERE user_id = %s AND (transcript LIKE %s OR summary LIKE %s OR title LIKE %s)
             ORDER BY date DESC
             LIMIT 20
-        ''', (f'%{query}%', f'%{query}%', f'%{query}%'))
+        ''', (request.current_user['user_id'], f'%{query}%', f'%{query}%', f'%{query}%'))
 
         results = [dict(row) for row in c.fetchall()]
         return jsonify(results)
@@ -844,19 +851,20 @@ def search_meetings():
         conn.close()
 
 @app.route('/api/stats')
+@jwt_required
 def get_stats():
-    """Get statistics about meetings"""
+    """Get statistics about meetings for current user"""
     conn = get_db()
     try:
         c = conn.cursor()
 
-        c.execute('SELECT COUNT(*) as total FROM meetings')
+        c.execute('SELECT COUNT(*) as total FROM meetings WHERE user_id = %s', (request.current_user['user_id'],))
         total = c.fetchone()['total']
 
-        c.execute("SELECT COUNT(*) as completed FROM meetings WHERE status = 'completed'")
+        c.execute("SELECT COUNT(*) as completed FROM meetings WHERE user_id = %s AND status = 'completed'", (request.current_user['user_id'],))
         completed = c.fetchone()['completed']
 
-        c.execute("SELECT COUNT(*) as processing FROM meetings WHERE status = 'processing'")
+        c.execute("SELECT COUNT(*) as processing FROM meetings WHERE user_id = %s AND status = 'processing'", (request.current_user['user_id'],))
         processing = c.fetchone()['processing']
 
         return jsonify({
@@ -868,16 +876,17 @@ def get_stats():
         conn.close()
 
 @app.route('/download/<int:meeting_id>')
+@jwt_required
 def download_transcript(meeting_id):
     """Download meeting transcript as markdown"""
     conn = get_db()
     try:
         c = conn.cursor()
-        c.execute('SELECT * FROM meetings WHERE id = %s', (meeting_id,))
+        c.execute('SELECT * FROM meetings WHERE id = %s AND user_id = %s', (meeting_id, request.current_user['user_id']))
         meeting = c.fetchone()
 
         if not meeting:
-            return "Meeting not found", 404
+            return "Meeting not found or access denied", 404
     finally:
         conn.close()
 
@@ -937,6 +946,7 @@ def format_action_items(items):
     return "\n".join([f"- [ ] {item}" for item in items])
 
 @app.route('/api/live/start', methods=['POST'])
+@jwt_required
 def start_live_session():
     """Start a new live recording session"""
     data = request.json
@@ -946,22 +956,23 @@ def start_live_session():
     # Generate session ID
     session_id = f"live_{int(time.time())}_{os.urandom(4).hex()}"
 
-    # Create meeting entry in database
+    # Create meeting entry in database with user_id
     conn = get_db()
     try:
         c = conn.cursor()
         c.execute('''
-            INSERT INTO meetings (title, status)
-            VALUES (%s, 'recording')
+            INSERT INTO meetings (user_id, title, status)
+            VALUES (%s, %s, 'recording')
             RETURNING id
-        ''', (title,))
+        ''', (request.current_user['user_id'], title))
         meeting_id = c.fetchone()[0]
         conn.commit()
     finally:
         conn.close()
 
-    # Store session info
+    # Store session info with user_id for verification
     live_sessions[session_id] = {
+        'user_id': request.current_user['user_id'],
         'meeting_id': meeting_id,
         'title': title,
         'start_time': time.time(),
@@ -976,12 +987,17 @@ def start_live_session():
     })
 
 @app.route('/api/live/chunk', methods=['POST'])
+@jwt_required
 def receive_live_chunk():
     """Receive and process audio chunk from live session"""
     session_id = request.form.get('session_id')
 
     if not session_id or session_id not in live_sessions:
         return jsonify({'error': 'Invalid session'}), 400
+
+    # Verify session belongs to current user
+    if live_sessions[session_id]['user_id'] != request.current_user['user_id']:
+        return jsonify({'error': 'Access denied'}), 403
 
     # Get audio chunk
     if 'audio' not in request.files:
@@ -1035,6 +1051,7 @@ def receive_live_chunk():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/live/stop', methods=['POST'])
+@jwt_required
 def stop_live_session():
     """Stop live recording session and finalize"""
     data = request.json
@@ -1044,6 +1061,11 @@ def stop_live_session():
         return jsonify({'error': 'Invalid session'}), 400
 
     session = live_sessions[session_id]
+
+    # Verify session belongs to current user
+    if session['user_id'] != request.current_user['user_id']:
+        return jsonify({'error': 'Access denied'}), 403
+
     meeting_id = session['meeting_id']
 
     # Combine all transcript parts
@@ -1137,9 +1159,10 @@ DECISIONS:
     })
 
 @app.route('/live')
+@jwt_required
 def live_recording_page():
     """Live recording interface"""
-    return render_template('live.html')
+    return render_template('live.html', user=request.current_user)
 
 @app.route('/health')
 def health_check():
