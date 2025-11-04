@@ -21,6 +21,87 @@ This document details EVERY feature, button, and interaction in the system. Ever
 - ✅ **All Elements Themed**: Cards, badges, inputs, modals, calendar
 - ✅ **Keyboard Shortcut**: Cmd/Ctrl+Shift+D to toggle
 
+## 📅 Google Calendar Integration (Notion-Style Auto-Record)
+
+### Automatic Meeting Detection
+- ✅ **Background Polling**: Frontend checks every 60 seconds for upcoming meetings
+- ✅ **5-Minute Window**: Detects meetings starting in the next 5 minutes
+- ✅ **API Endpoint**: GET `/api/calendar/check-meetings` (JWT protected)
+- ✅ **Duplicate Prevention**: `calendar_events_prompted` table prevents repeat prompts
+- ✅ **OAuth 2.0 Flow**: Secure Google Calendar access per user
+- ✅ **Token Storage**: Per-user tokens in PostgreSQL with automatic refresh
+- ✅ **Minimal Permissions**: Only requests `calendar.readonly` scope
+
+### Browser Notifications
+- ✅ **Permission Request**: On page load (one-time)
+- ✅ **Native Notifications**: Uses browser Notification API
+- ✅ **Meeting Details**: Shows title, time, attendee count
+- ✅ **Click to Focus**: Clicking notification brings window to focus
+- ✅ **Persistent**: `requireInteraction: true` until user responds
+
+### Notion-Style Prompt Modal
+- ✅ **Beautiful Design**: Matches Notion's aesthetic exactly
+- ✅ **48px Emoji Icon**: 🎙️ microphone
+- ✅ **Meeting Information**: Title, time, attendee count
+- ✅ **Primary Action**: "🎙️ Record This Meeting" button (blue)
+- ✅ **Secondary Action**: "Not Now" button (gray)
+- ✅ **Backdrop Blur**: Modal overlay with blur effect
+- ✅ **Auto-Fill**: Pre-fills meeting title on recording page
+- ✅ **One-Click Flow**: Instant redirect to `/live?auto=true&title=...`
+
+### Settings Page Integration
+- ✅ **Connection Section**: Dedicated "📅 Calendar Integration" section
+- ✅ **Connect Button**: "📅 Connect Google Calendar" with OAuth popup
+- ✅ **Connection Status**: Shows "✓ Calendar Connected" when active
+- ✅ **OAuth Popup**: 500x600px window for authorization
+- ✅ **Status Polling**: Checks connection every 3 seconds during OAuth
+- ✅ **Disconnect Button**: Revokes access and deletes tokens
+- ✅ **Feature Description**: Explains benefits with bullet points
+
+### Backend API Endpoints
+- ✅ POST `/api/calendar/connect` - Generate OAuth URL
+- ✅ GET `/api/calendar/callback` - Handle OAuth redirect
+- ✅ POST `/api/calendar/save-token` - Save access/refresh tokens
+- ✅ POST `/api/calendar/disconnect` - Delete user tokens
+- ✅ GET `/api/calendar/status` - Check connection status
+- ✅ GET `/api/calendar/upcoming` - Get next 24 hours events
+- ✅ GET `/api/calendar/check-meetings` - Check for meetings starting in 5min
+- ✅ GET `/api/calendar/events/:event_id` - Get specific event details
+
+### Database Tables
+- ✅ **calendar_tokens** table:
+  - user_id (UNIQUE, foreign key to users)
+  - access_token (encrypted in production)
+  - refresh_token (encrypted in production)
+  - token_expiry (timestamp)
+  - calendar_id (default: 'primary')
+  - created_at, updated_at
+- ✅ **calendar_events_prompted** table:
+  - user_id (foreign key to users)
+  - event_id (UNIQUE per user)
+  - event_start (timestamp)
+  - prompted_at (timestamp)
+  - recording_started (boolean)
+  - meeting_id (foreign key to meetings)
+
+### Security Features
+- ✅ **Per-User Isolation**: Each user has separate tokens
+- ✅ **Token Encryption**: Optional pgcrypto for production
+- ✅ **Auto-Refresh**: Tokens refresh automatically when expired
+- ✅ **Minimal Scope**: Only calendar.readonly permission
+- ✅ **Cascade Deletion**: Deleting user removes all tokens
+- ✅ **OAuth 2.0 Standard**: Industry-standard authorization
+
+### Setup Documentation
+- ✅ **GOOGLE_CALENDAR_SETUP.md**: Complete 6-step setup guide
+- ✅ **Google Cloud Console**: Walkthrough for API enablement
+- ✅ **OAuth Consent Screen**: Configuration instructions
+- ✅ **Credentials Setup**: Client ID and Secret generation
+- ✅ **Environment Variables**: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, APP_URL
+- ✅ **Troubleshooting Section**: Common issues and solutions
+- ✅ **Testing Instructions**: How to verify integration works
+- ✅ **Production Enhancements**: Token encryption, HTTPS, app publishing
+
 ## 🔐 Authentication System
 
 ### Login Page (`/auth/login`)

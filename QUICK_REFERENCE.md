@@ -238,10 +238,87 @@ With these optimizations:
 
 ---
 
+## 📅 Google Calendar Integration (Notion-Style Auto-Record)
+
+### Quick Setup:
+```bash
+# 1. Get Google Cloud credentials
+# Follow GOOGLE_CALENDAR_SETUP.md for detailed guide
+
+# 2. Add to .env
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-your-secret
+APP_URL=http://your-vps-ip:8080
+
+# 3. Restart application
+docker-compose restart web
+```
+
+### How It Works:
+- **Every 60 seconds**: Frontend checks for meetings starting in 5 minutes
+- **Browser notification**: Native notification appears
+- **Notion-style modal**: Beautiful prompt with meeting details
+- **One-click record**: Pre-fills title and starts recording instantly
+- **Duplicate prevention**: Won't prompt for same meeting twice
+
+### User Flow:
+1. User connects Google Calendar in Settings (OAuth popup)
+2. System checks calendar every minute
+3. 5 minutes before meeting → notification + modal prompt
+4. Click "Record This Meeting" → redirect to `/live` with pre-filled title
+5. Recording auto-uploads and processes when done
+
+### API Endpoints:
+```bash
+POST /api/calendar/connect           # Start OAuth flow
+GET  /api/calendar/callback          # OAuth redirect
+POST /api/calendar/save-token        # Save credentials
+GET  /api/calendar/check-meetings    # Check for upcoming meetings
+POST /api/calendar/disconnect        # Revoke access
+```
+
+### Database Tables:
+```sql
+calendar_tokens:
+  - user_id (UNIQUE)
+  - access_token, refresh_token
+  - token_expiry
+
+calendar_events_prompted:
+  - user_id, event_id (UNIQUE)
+  - prompted_at, recording_started
+```
+
+### Troubleshooting:
+```bash
+# Check calendar connection
+curl http://localhost:8080/api/calendar/status \
+  -H "Authorization: Bearer $TOKEN"
+
+# View connected users
+docker exec meeting-postgres psql -U meeting_user -d meetings -c "
+  SELECT u.username, ct.created_at
+  FROM calendar_tokens ct
+  JOIN users u ON u.id = ct.user_id;
+"
+
+# See prompted events today
+docker exec meeting-postgres psql -U meeting_user -d meetings -c "
+  SELECT u.username, cep.event_start, cep.recording_started
+  FROM calendar_events_prompted cep
+  JOIN users u ON u.id = cep.user_id
+  WHERE cep.prompted_at > CURRENT_DATE;
+"
+```
+
+---
+
 ## 📚 Documentation
 
+- **COMPLETE_FEATURES.md** - Full feature list (700+ lines)
 - **PERFORMANCE_OPTIMIZATION.md** - Detailed performance guide (300+ lines)
-- **COMPLETE_FEATURES.md** - Full feature list (600+ lines)
+- **GOOGLE_CALENDAR_SETUP.md** - Calendar integration setup (400+ lines)
+- **QUICK_REFERENCE.md** - This file - One-page cheat sheet
 - **PRODUCTION_DEPLOY.md** - Deployment guide
 - **README.md** - Getting started guide
 
