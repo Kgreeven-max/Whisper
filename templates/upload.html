@@ -1,184 +1,194 @@
-{% extends "base.html" %}
+{% extends "notion_base.html" %}
 
-{% block title %}Upload Meeting - Meeting Transcriber{% endblock %}
+{% block title %}New Meeting - Meeting Transcriber{% endblock %}
 
-{% block extra_css %}
-<style>
-    .upload-container {
-        max-width: 700px;
-        margin: 2rem auto;
-    }
-
-    .upload-zone {
-        border: 2px dashed var(--border);
-        border-radius: 0.5rem;
-        padding: 3rem 2rem;
-        text-align: center;
-        cursor: pointer;
-        transition: all 0.2s;
-        background: var(--card-bg);
-    }
-
-    .upload-zone:hover,
-    .upload-zone.drag-over {
-        border-color: var(--primary);
-        background: #f0f7ff;
-    }
-
-    .upload-icon {
-        font-size: 4rem;
-        margin-bottom: 1rem;
-    }
-
-    .file-input {
-        display: none;
-    }
-
-    .file-info {
-        margin-top: 1rem;
-        padding: 1rem;
-        background: var(--bg);
-        border-radius: 0.375rem;
-        display: none;
-    }
-
-    .file-info.show {
-        display: block;
-    }
-
-    .progress-bar {
-        width: 100%;
-        height: 8px;
-        background: var(--border);
-        border-radius: 4px;
-        overflow: hidden;
-        margin-top: 1rem;
-        display: none;
-    }
-
-    .progress-bar.show {
-        display: block;
-    }
-
-    .progress-fill {
-        height: 100%;
-        background: var(--primary);
-        width: 0%;
-        transition: width 0.3s;
-    }
-
-    .supported-formats {
-        margin-top: 1.5rem;
-        padding: 1rem;
-        background: var(--bg);
-        border-radius: 0.375rem;
-        font-size: 0.875rem;
-        color: var(--text-light);
-    }
-</style>
+{% block breadcrumb %}
+<span>➕ New Meeting</span>
 {% endblock %}
 
+{% block content_class %}{% endblock %}
+
 {% block content %}
-<div class="upload-container">
-    <div class="card">
-        <h1 class="card-title">Upload Meeting Recording</h1>
+<div class="fade-in" style="padding: 60px 96px; max-width: 900px; margin: 0 auto;">
+    <!-- Page Title -->
+    <h1 class="notion-page-title" style="margin-bottom: 8px;">New Meeting</h1>
+    <p style="color: var(--notion-gray); font-size: 14px; margin-bottom: 40px;">
+        Upload an audio recording to transcribe and analyze with AI
+    </p>
 
-        <form id="upload-form" enctype="multipart/form-data">
-            <div class="form-group">
-                <label class="form-label">Meeting Title *</label>
+    <form id="upload-form" enctype="multipart/form-data">
+        <!-- Meeting Title -->
+        <div style="margin-bottom: 24px;">
+            <label style="display: block; font-size: 13px; font-weight: 600; color: var(--notion-text); margin-bottom: 6px;">
+                Meeting Title <span style="color: var(--notion-red);">*</span>
+            </label>
+            <input
+                type="text"
+                name="title"
+                id="meeting-title"
+                placeholder="e.g., Q4 Planning Meeting"
+                required
+                style="width: 100%; padding: 8px 12px; border: 1px solid var(--notion-border); border-radius: 3px; font-size: 14px; font-family: inherit; color: var(--notion-text); background: var(--notion-bg); transition: border-color 0.1s ease;"
+                onfocus="this.style.borderColor='var(--notion-blue)'"
+                onblur="this.style.borderColor='var(--notion-border)'"
+            >
+        </div>
+
+        <!-- Meeting Type -->
+        <div style="margin-bottom: 24px;">
+            <label style="display: block; font-size: 13px; font-weight: 600; color: var(--notion-text); margin-bottom: 6px;">
+                Meeting Type
+            </label>
+            <select
+                name="meeting_type"
+                id="meeting-type"
+                style="width: 100%; padding: 8px 12px; border: 1px solid var(--notion-border); border-radius: 3px; font-size: 14px; font-family: inherit; color: var(--notion-text); background: var(--notion-bg); cursor: pointer; transition: border-color 0.1s ease;"
+                onfocus="this.style.borderColor='var(--notion-blue)'"
+                onblur="this.style.borderColor='var(--notion-border)'"
+            >
+                <option value="auto-detect" selected>🤖 Auto-detect (recommended)</option>
+                <option value="standup">📊 Daily Standup</option>
+                <option value="retrospective">🔄 Retrospective</option>
+                <option value="planning">📅 Planning Meeting</option>
+                <option value="one-on-one">👥 One-on-One</option>
+                <option value="team-sync">🔄 Team Sync</option>
+                <option value="brainstorming">💡 Brainstorming</option>
+                <option value="review">✅ Review/Demo</option>
+                <option value="client-call">📞 Client Call</option>
+                <option value="interview">🎤 Interview</option>
+                <option value="training">📚 Training</option>
+                <option value="general">📝 General</option>
+            </select>
+            <p style="font-size: 12px; color: var(--notion-gray); margin-top: 4px;">
+                AI will automatically detect the type, or choose manually
+            </p>
+        </div>
+
+        <!-- Attendees -->
+        <div style="margin-bottom: 24px;">
+            <label style="display: block; font-size: 13px; font-weight: 600; color: var(--notion-text); margin-bottom: 6px;">
+                Attendees
+            </label>
+            <input
+                type="text"
+                name="attendees"
+                id="attendees"
+                placeholder="e.g., John, Sarah, Mike"
+                style="width: 100%; padding: 8px 12px; border: 1px solid var(--notion-border); border-radius: 3px; font-size: 14px; font-family: inherit; color: var(--notion-text); background: var(--notion-bg); transition: border-color 0.1s ease;"
+                onfocus="this.style.borderColor='var(--notion-blue)'"
+                onblur="this.style.borderColor='var(--notion-border)'"
+            >
+        </div>
+
+        <!-- Tags -->
+        <div style="margin-bottom: 32px;">
+            <label style="display: block; font-size: 13px; font-weight: 600; color: var(--notion-text); margin-bottom: 6px;">
+                Tags
+            </label>
+            <input
+                type="text"
+                name="tags"
+                id="tags"
+                placeholder="e.g., planning, quarterly, strategy"
+                style="width: 100%; padding: 8px 12px; border: 1px solid var(--notion-border); border-radius: 3px; font-size: 14px; font-family: inherit; color: var(--notion-text); background: var(--notion-bg); transition: border-color 0.1s ease;"
+                onfocus="this.style.borderColor='var(--notion-blue)'"
+                onblur="this.style.borderColor='var(--notion-border)'"
+            >
+        </div>
+
+        <!-- Audio File Upload -->
+        <div style="margin-bottom: 32px;">
+            <label style="display: block; font-size: 13px; font-weight: 600; color: var(--notion-text); margin-bottom: 6px;">
+                Audio File <span style="color: var(--notion-red);">*</span>
+            </label>
+
+            <div
+                id="upload-zone"
+                style="border: 2px dashed var(--notion-border); border-radius: 6px; padding: 48px 32px; text-align: center; cursor: pointer; transition: all 0.2s ease; background: var(--notion-bg);"
+                onmouseover="this.style.borderColor='var(--notion-blue)'; this.style.background='var(--notion-hover)'"
+                onmouseout="this.style.borderColor='var(--notion-border)'; this.style.background='var(--notion-bg)'"
+            >
+                <div style="font-size: 48px; margin-bottom: 16px;">🎙️</div>
+                <h3 style="font-size: 16px; font-weight: 600; color: var(--notion-text); margin-bottom: 8px;">
+                    Drag & drop your audio file here
+                </h3>
+                <p style="font-size: 14px; color: var(--notion-gray);">
+                    or click to browse
+                </p>
                 <input
-                    type="text"
-                    name="title"
-                    class="form-input"
-                    placeholder="e.g., Q4 Planning Meeting"
+                    type="file"
+                    name="audio"
+                    id="file-input"
+                    accept="audio/*,video/*"
                     required
+                    style="display: none;"
                 >
             </div>
 
-            <div class="form-group">
-                <label class="form-label">Attendees</label>
-                <input
-                    type="text"
-                    name="attendees"
-                    class="form-input"
-                    placeholder="e.g., John, Sarah, Mike"
-                >
+            <!-- File Info -->
+            <div id="file-info" style="display: none; margin-top: 12px; padding: 12px; background: var(--notion-hover); border-radius: 3px;">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <div style="flex: 1;">
+                        <strong style="font-size: 13px; color: var(--notion-text);" id="file-name"></strong>
+                        <p style="font-size: 12px; color: var(--notion-gray); margin-top: 2px;" id="file-size"></p>
+                    </div>
+                    <button
+                        type="button"
+                        onclick="clearFile()"
+                        style="padding: 4px 8px; background: none; border: none; color: var(--notion-red); cursor: pointer; font-size: 12px;"
+                    >
+                        Remove
+                    </button>
+                </div>
             </div>
 
-            <div class="form-group">
-                <label class="form-label">Tags</label>
-                <input
-                    type="text"
-                    name="tags"
-                    class="form-input"
-                    placeholder="e.g., planning, quarterly, strategy"
-                >
+            <!-- Progress Bar -->
+            <div id="progress-bar" style="display: none; margin-top: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 12px; color: var(--notion-text); font-weight: 500;">Uploading...</span>
+                    <span id="progress-percent" style="font-size: 12px; color: var(--notion-gray);">0%</span>
+                </div>
+                <div style="width: 100%; height: 6px; background: var(--notion-border); border-radius: 3px; overflow: hidden;">
+                    <div id="progress-fill" style="height: 100%; background: var(--notion-blue); width: 0%; transition: width 0.3s ease;"></div>
+                </div>
             </div>
 
-            <div class="form-group">
-                <label class="form-label">Meeting Type</label>
-                <select name="meeting_type" class="form-input">
-                    <option value="auto-detect" selected>🤖 Auto-detect (recommended)</option>
-                    <option value="standup">📊 Daily Standup</option>
-                    <option value="retrospective">🔄 Retrospective</option>
-                    <option value="planning">📅 Planning Meeting</option>
-                    <option value="one-on-one">👥 One-on-One</option>
-                    <option value="team-sync">🔄 Team Sync</option>
-                    <option value="brainstorming">💡 Brainstorming</option>
-                    <option value="review">✅ Review/Demo</option>
-                    <option value="client-call">📞 Client Call</option>
-                    <option value="interview">🎤 Interview</option>
-                    <option value="training">📚 Training</option>
-                    <option value="general">📝 General</option>
-                </select>
-                <p class="text-muted mt-1" style="font-size: 0.875rem;">
-                    AI will automatically detect the meeting type from the transcript, or you can select manually
+            <!-- Supported Formats -->
+            <div style="margin-top: 16px; padding: 12px; background: var(--notion-sidebar-bg); border-radius: 3px;">
+                <p style="font-size: 12px; color: var(--notion-gray);">
+                    <strong style="color: var(--notion-text);">Supported formats:</strong> MP3, WAV, M4A, MP4, FLAC, OGG
+                    <br>
+                    <strong style="color: var(--notion-text);">Maximum size:</strong> 500 MB
                 </p>
             </div>
+        </div>
 
-            <div class="form-group">
-                <label class="form-label">Audio File *</label>
-                <div class="upload-zone" id="upload-zone">
-                    <div class="upload-icon">🎙️</div>
-                    <h3>Drag & drop your audio file here</h3>
-                    <p class="text-muted mt-1">or click to browse</p>
-                    <input
-                        type="file"
-                        name="audio"
-                        id="file-input"
-                        class="file-input"
-                        accept="audio/*,video/*"
-                        required
-                    >
-                </div>
-
-                <div class="file-info" id="file-info">
-                    <strong>Selected file:</strong>
-                    <p class="text-muted mt-1" id="file-name"></p>
-                    <p class="text-muted" id="file-size"></p>
-                </div>
-
-                <div class="progress-bar" id="progress-bar">
-                    <div class="progress-fill" id="progress-fill"></div>
-                </div>
-
-                <div class="supported-formats">
-                    <strong>Supported formats:</strong> MP3, WAV, M4A, MP4, FLAC, OGG
-                    <br>
-                    <strong>Maximum size:</strong> 500 MB
-                </div>
-            </div>
-
-            <div class="alert alert-info">
+        <!-- Info Box -->
+        <div style="margin-bottom: 32px; padding: 12px 16px; background: #e3f2fd; border-left: 3px solid var(--notion-blue); border-radius: 3px;">
+            <p style="font-size: 13px; color: #1565c0; line-height: 1.6;">
                 <strong>Processing time:</strong> Depending on the length of your recording, processing may take several minutes. You can navigate away and check back later.
-            </div>
+            </p>
+        </div>
 
-            <button type="submit" class="btn btn-primary" id="submit-btn">
+        <!-- Action Buttons -->
+        <div style="display: flex; gap: 12px;">
+            <button
+                type="submit"
+                id="submit-btn"
+                class="notion-btn notion-btn-primary"
+                style="padding: 10px 20px; font-size: 14px;"
+            >
                 Upload & Process
             </button>
-            <a href="/" class="btn btn-secondary">Cancel</a>
-        </form>
-    </div>
+            <a
+                href="/"
+                class="notion-btn notion-btn-secondary"
+                style="padding: 10px 20px; font-size: 14px; text-decoration: none; display: inline-flex; align-items: center;"
+            >
+                Cancel
+            </a>
+        </div>
+    </form>
 </div>
 
 <script>
@@ -191,6 +201,11 @@
     const submitBtn = document.getElementById('submit-btn');
     const progressBar = document.getElementById('progress-bar');
     const progressFill = document.getElementById('progress-fill');
+    const progressPercent = document.getElementById('progress-percent');
+
+    // ============================================================
+    // File Upload UI
+    // ============================================================
 
     // Click to upload
     uploadZone.addEventListener('click', () => {
@@ -200,16 +215,23 @@
     // Drag and drop
     uploadZone.addEventListener('dragover', (e) => {
         e.preventDefault();
-        uploadZone.classList.add('drag-over');
+        e.stopPropagation();
+        uploadZone.style.borderColor = 'var(--notion-blue)';
+        uploadZone.style.background = 'var(--notion-hover)';
     });
 
-    uploadZone.addEventListener('dragleave', () => {
-        uploadZone.classList.remove('drag-over');
+    uploadZone.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        uploadZone.style.borderColor = 'var(--notion-border)';
+        uploadZone.style.background = 'var(--notion-bg)';
     });
 
     uploadZone.addEventListener('drop', (e) => {
         e.preventDefault();
-        uploadZone.classList.remove('drag-over');
+        e.stopPropagation();
+        uploadZone.style.borderColor = 'var(--notion-border)';
+        uploadZone.style.background = 'var(--notion-bg)';
 
         const files = e.dataTransfer.files;
         if (files.length > 0) {
@@ -229,7 +251,14 @@
     function displayFileInfo(file) {
         fileName.textContent = file.name;
         fileSize.textContent = formatFileSize(file.size);
-        fileInfo.classList.add('show');
+        fileInfo.style.display = 'block';
+        uploadZone.style.borderColor = 'var(--notion-blue)';
+    }
+
+    function clearFile() {
+        fileInput.value = '';
+        fileInfo.style.display = 'none';
+        uploadZone.style.borderColor = 'var(--notion-border)';
     }
 
     function formatFileSize(bytes) {
@@ -240,7 +269,10 @@
         return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
     }
 
-    // Form submission
+    // ============================================================
+    // Form Submission
+    // ============================================================
+
     uploadForm.addEventListener('submit', async (e) => {
         e.preventDefault();
 
@@ -249,7 +281,7 @@
         // Disable submit button
         submitBtn.disabled = true;
         submitBtn.textContent = 'Uploading...';
-        progressBar.classList.add('show');
+        progressBar.style.display = 'block';
 
         try {
             const xhr = new XMLHttpRequest();
@@ -265,8 +297,9 @@
             // Track upload progress
             xhr.upload.addEventListener('progress', (e) => {
                 if (e.lengthComputable) {
-                    const percentComplete = (e.loaded / e.total) * 100;
+                    const percentComplete = Math.round((e.loaded / e.total) * 100);
                     progressFill.style.width = percentComplete + '%';
+                    progressPercent.textContent = percentComplete + '%';
                 }
             });
 
@@ -276,9 +309,9 @@
                     try {
                         const response = JSON.parse(xhr.responseText);
 
-                        // Show success message with queue info
-                        submitBtn.textContent = '✓ Uploaded!';
-                        submitBtn.style.background = '#10b981';
+                        // Show success message
+                        submitBtn.textContent = '✓ Uploaded Successfully!';
+                        submitBtn.style.background = 'var(--notion-green)';
 
                         // Redirect to meeting page after 1 second
                         setTimeout(() => {
@@ -294,17 +327,13 @@
                 } else {
                     const errorMsg = xhr.responseText || xhr.statusText;
                     alert('Upload failed: ' + errorMsg);
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = 'Upload & Process';
-                    progressBar.classList.remove('show');
+                    resetUploadForm();
                 }
             });
 
             xhr.addEventListener('error', () => {
                 alert('Upload failed. Please check your connection and try again.');
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Upload & Process';
-                progressBar.classList.remove('show');
+                resetUploadForm();
             });
 
             xhr.open('POST', '/upload');
@@ -314,10 +343,16 @@
         } catch (error) {
             console.error('Upload error:', error);
             alert('Upload failed. Please try again.');
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Upload & Process';
-            progressBar.classList.remove('show');
+            resetUploadForm();
         }
     });
+
+    function resetUploadForm() {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Upload & Process';
+        progressBar.style.display = 'none';
+        progressFill.style.width = '0%';
+        progressPercent.textContent = '0%';
+    }
 </script>
 {% endblock %}
