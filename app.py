@@ -691,9 +691,106 @@ def index():
     conn = get_db()
     try:
         c = conn.cursor()
-        c.execute('SELECT * FROM meetings WHERE user_id = %s ORDER BY date DESC LIMIT 50', (request.current_user['user_id'],))
+        c.execute('SELECT * FROM meetings WHERE user_id = %s ORDER BY display_order, date DESC LIMIT 50', (request.current_user['user_id'],))
         meetings = c.fetchall()
-        return render_template('dashboard.html', meetings=meetings, user=request.current_user)
+        return render_template('notion_dashboard.html', meetings=meetings, user=request.current_user)
+    finally:
+        conn.close()
+
+@app.route('/calendar')
+@jwt_required
+def calendar_view():
+    """Calendar view of meetings"""
+    import calendar as cal
+    from datetime import datetime, timedelta
+
+    # Get year and month from query params, default to current
+    year = request.args.get('year', type=int) or datetime.now().year
+    month = request.args.get('month', type=int) or datetime.now().month
+
+    # Get first and last day of the month
+    first_day = datetime(year, month, 1)
+    if month == 12:
+        last_day = datetime(year + 1, 1, 1) - timedelta(days=1)
+    else:
+        last_day = datetime(year, month + 1, 1) - timedelta(days=1)
+
+    # Get all meetings for this user in this month (plus surrounding days)
+    conn = get_db()
+    try:
+        c = conn.cursor()
+
+        # Get meetings from a week before to a week after to cover all visible days
+        start_date = first_day - timedelta(days=7)
+        end_date = last_day + timedelta(days=7)
+
+        c.execute('''
+            SELECT id, title, date, meeting_type
+            FROM meetings
+            WHERE user_id = %s AND date >= %s AND date <= %s
+            ORDER BY date
+        ''', (request.current_user['user_id'], start_date, end_date))
+
+        all_meetings = c.fetchall()
+
+        # Organize meetings by date
+        meetings_by_date = {}
+        for meeting in all_meetings:
+            if meeting['date']:
+                date_key = meeting['date'].strftime('%Y-%m-%d')
+                if date_key not in meetings_by_date:
+                    meetings_by_date[date_key] = []
+                meetings_by_date[date_key].append(meeting)
+
+        # Build calendar days structure
+        calendar_days = []
+
+        # Get first day of week offset
+        first_weekday = first_day.weekday()
+        # Python's weekday: Monday=0, Sunday=6. Calendar grid: Sunday=0
+        first_weekday = (first_weekday + 1) % 7
+
+        # Add days from previous month
+        if first_weekday > 0:
+            prev_month_last_day = first_day - timedelta(days=1)
+            for i in range(first_weekday):
+                day_date = prev_month_last_day - timedelta(days=first_weekday - 1 - i)
+                date_key = day_date.strftime('%Y-%m-%d')
+                calendar_days.append({
+                    'date': day_date,
+                    'in_month': False,
+                    'meetings': meetings_by_date.get(date_key, [])
+                })
+
+        # Add days of current month
+        current_day = first_day
+        while current_day <= last_day:
+            date_key = current_day.strftime('%Y-%m-%d')
+            calendar_days.append({
+                'date': current_day,
+                'in_month': True,
+                'meetings': meetings_by_date.get(date_key, [])
+            })
+            current_day += timedelta(days=1)
+
+        # Add days from next month to complete the grid (42 cells = 6 weeks)
+        while len(calendar_days) < 42:
+            date_key = current_day.strftime('%Y-%m-%d')
+            calendar_days.append({
+                'date': current_day,
+                'in_month': False,
+                'meetings': meetings_by_date.get(date_key, [])
+            })
+            current_day += timedelta(days=1)
+
+        # Get month name
+        month_name = first_day.strftime('%B')
+
+        return render_template('notion_calendar.html',
+                             calendar_days=calendar_days,
+                             current_month=month_name,
+                             current_year=year,
+                             user=request.current_user)
     finally:
         conn.close()
 
@@ -1024,6 +1121,35 @@ def delete_meeting(meeting_id):
         conn.commit()
 
         return redirect(url_for('index'))
+    finally:
+        conn.close()
+
+@app.route('/api/meeting/<int:meeting_id>/delete', methods=['DELETE'])
+@jwt_required
+def delete_meeting_api(meeting_id):
+    """Delete a meeting (API endpoint)"""
+    conn = get_db()
+    try:
+        c = conn.cursor()
+
+        # Get audio file path (verify user owns this meeting)
+        c.execute('SELECT audio_file FROM meetings WHERE id = %s AND user_id = %s', (meeting_id, request.current_user['user_id']))
+        result = c.fetchone()
+
+        if not result:
+            return jsonify({'error': 'Meeting not found or access denied'}), 404
+
+        if result['audio_file']:
+            # Delete audio file
+            audio_path = os.path.join(app.config['UPLOAD_FOLDER'], result['audio_file'])
+            if os.path.exists(audio_path):
+                os.remove(audio_path)
+
+        # Delete database entry (user_id already verified above)
+        c.execute('DELETE FROM meetings WHERE id = %s AND user_id = %s', (meeting_id, request.current_user['user_id']))
+        conn.commit()
+
+        return jsonify({'success': True})
     finally:
         conn.close()
 
