@@ -116,6 +116,27 @@
             </div>
 
             <div class="form-group">
+                <label class="form-label">Meeting Type</label>
+                <select name="meeting_type" class="form-input">
+                    <option value="auto-detect" selected>🤖 Auto-detect (recommended)</option>
+                    <option value="standup">📊 Daily Standup</option>
+                    <option value="retrospective">🔄 Retrospective</option>
+                    <option value="planning">📅 Planning Meeting</option>
+                    <option value="one-on-one">👥 One-on-One</option>
+                    <option value="team-sync">🔄 Team Sync</option>
+                    <option value="brainstorming">💡 Brainstorming</option>
+                    <option value="review">✅ Review/Demo</option>
+                    <option value="client-call">📞 Client Call</option>
+                    <option value="interview">🎤 Interview</option>
+                    <option value="training">📚 Training</option>
+                    <option value="general">📝 General</option>
+                </select>
+                <p class="text-muted mt-1" style="font-size: 0.875rem;">
+                    AI will automatically detect the meeting type from the transcript, or you can select manually
+                </p>
+            </div>
+
+            <div class="form-group">
                 <label class="form-label">Audio File *</label>
                 <div class="upload-zone" id="upload-zone">
                     <div class="upload-icon">🎙️</div>

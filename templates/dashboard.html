@@ -149,34 +149,37 @@
         <div class="meeting-card" onclick="window.location.href='/meeting/{{ meeting[0] }}'">
             <div class="meeting-header">
                 <div>
-                    <h3 class="meeting-title">{{ meeting[1] }}</h3>
+                    <h3 class="meeting-title">{{ meeting[2] }}</h3>
                     <div class="meeting-meta">
-                        <span>📅 {{ meeting[2][:16] }}</span>
-                        {% if meeting[8] %}
-                        <span>👥 {{ meeting[8] }}</span>
+                        <span>📅 {{ meeting[3][:16] }}</span>
+                        {% if meeting[10] %}
+                        <span>👥 {{ meeting[10] }}</span>
+                        {% endif %}
+                        {% if meeting[14] and meeting[14] != 'general' %}
+                        <span>📁 {{ meeting[14]|replace('-', ' ')|title }}</span>
                         {% endif %}
                     </div>
                 </div>
                 <div>
-                    {% if meeting[11] == 'completed' %}
+                    {% if meeting[13] == 'completed' %}
                     <span class="badge badge-success">Completed</span>
-                    {% elif meeting[11] == 'processing' %}
-                    <span class="badge badge-warning">Processing</span>
+                    {% elif meeting[13] == 'processing' or 'queued' in meeting[13] %}
+                    <span class="badge badge-warning">{{ meeting[13]|title }}</span>
                     {% else %}
                     <span class="badge badge-danger">Error</span>
                     {% endif %}
                 </div>
             </div>
 
-            {% if meeting[4] %}
+            {% if meeting[6] %}
             <div class="meeting-summary">
-                {{ meeting[4][:200] }}{% if meeting[4]|length > 200 %}...{% endif %}
+                {{ meeting[6][:200] }}{% if meeting[6]|length > 200 %}...{% endif %}
             </div>
             {% endif %}
 
-            {% if meeting[10] %}
+            {% if meeting[12] %}
             <div class="meeting-tags">
-                {% for tag in meeting[10].split(',') %}
+                {% for tag in meeting[12].split(',') %}
                 <span class="tag">{{ tag.strip() }}</span>
                 {% endfor %}
             </div>

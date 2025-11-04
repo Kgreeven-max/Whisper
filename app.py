@@ -11,6 +11,8 @@ import time
 import jwt
 import bcrypt
 from functools import wraps
+import threading
+import queue
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = '/app/uploads'
@@ -20,12 +22,135 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-change-in-product
 app.config['JWT_SECRET'] = os.getenv('JWT_SECRET', os.getenv('SECRET_KEY', 'dev-jwt-secret-change-in-production'))  # JWT signing key
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 3600  # 1 hour
 app.config['JWT_REFRESH_TOKEN_EXPIRES'] = 2592000  # 30 days
+app.config['MAX_CONCURRENT_JOBS'] = int(os.getenv('MAX_CONCURRENT_JOBS', '2'))  # Max concurrent transcription jobs (for 8GB RAM)
 
 # Create upload directory if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Store active live recording sessions
 live_sessions = {}
+
+# ============================================================
+# TASK QUEUE SYSTEM (for resource management)
+# ============================================================
+
+# Job queue for audio processing
+processing_queue = queue.Queue()
+active_jobs = {}  # Track currently processing jobs
+queue_lock = threading.Lock()
+
+def audio_processing_worker():
+    """Background worker that processes audio jobs from queue"""
+    while True:
+        try:
+            job = processing_queue.get()
+
+            if job is None:  # Poison pill to stop worker
+                break
+
+            job_id = job['job_id']
+            meeting_id = job['meeting_id']
+            audio_path = job['audio_path']
+            title = job['title']
+
+            # Mark job as processing
+            with queue_lock:
+                active_jobs[job_id] = {
+                    'meeting_id': meeting_id,
+                    'status': 'processing',
+                    'started_at': time.time()
+                }
+
+            # Update database status
+            conn = get_db()
+            try:
+                c = conn.cursor()
+                c.execute("UPDATE meetings SET status = 'processing' WHERE id = %s", (meeting_id,))
+                conn.commit()
+            finally:
+                conn.close()
+
+            # Process the audio
+            try:
+                process_meeting_audio(audio_path, meeting_id, title)
+
+                # Mark job as completed
+                with queue_lock:
+                    if job_id in active_jobs:
+                        active_jobs[job_id]['status'] = 'completed'
+                        active_jobs[job_id]['completed_at'] = time.time()
+
+            except Exception as e:
+                print(f"Error processing job {job_id}: {e}")
+
+                # Mark job as failed
+                with queue_lock:
+                    if job_id in active_jobs:
+                        active_jobs[job_id]['status'] = 'failed'
+                        active_jobs[job_id]['error'] = str(e)
+
+                # Update database
+                conn = get_db()
+                try:
+                    c = conn.cursor()
+                    c.execute("UPDATE meetings SET status = 'error' WHERE id = %s", (meeting_id,))
+                    conn.commit()
+                finally:
+                    conn.close()
+
+            finally:
+                # Remove from active jobs after a delay (so status can be checked)
+                threading.Timer(60.0, lambda: active_jobs.pop(job_id, None)).start()
+                processing_queue.task_done()
+
+        except Exception as e:
+            print(f"Worker error: {e}")
+
+# Start worker threads (limit concurrent jobs based on RAM)
+num_workers = app.config['MAX_CONCURRENT_JOBS']
+worker_threads = []
+
+for i in range(num_workers):
+    t = threading.Thread(target=audio_processing_worker, daemon=True, name=f"AudioWorker-{i+1}")
+    t.start()
+    worker_threads.append(t)
+
+print(f"Started {num_workers} audio processing workers (MAX_CONCURRENT_JOBS={num_workers})")
+
+def enqueue_audio_job(meeting_id, audio_path, title):
+    """Add audio processing job to queue"""
+    job_id = f"job_{meeting_id}_{int(time.time())}"
+
+    job = {
+        'job_id': job_id,
+        'meeting_id': meeting_id,
+        'audio_path': audio_path,
+        'title': title,
+        'queued_at': time.time()
+    }
+
+    # Get current queue size
+    queue_size = processing_queue.qsize()
+    active_count = len([j for j in active_jobs.values() if j['status'] == 'processing'])
+
+    # Update database with queue position
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute("UPDATE meetings SET status = %s WHERE id = %s", (f'queued (position {queue_size + 1})', meeting_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+    # Add to queue
+    processing_queue.put(job)
+
+    return {
+        'job_id': job_id,
+        'queue_position': queue_size + 1,
+        'active_jobs': active_count,
+        'estimated_wait_seconds': queue_size * 60  # Rough estimate: 1 min per job ahead
+    }
 
 # Create database connection pool (prevents connection exhaustion)
 db_pool = None
@@ -102,7 +227,8 @@ def init_db():
                     attendees TEXT,
                     duration INTEGER,
                     tags TEXT,
-                    status TEXT DEFAULT 'processing'
+                    status TEXT DEFAULT 'processing',
+                    meeting_type TEXT DEFAULT 'general'
                 )
             ''')
 
@@ -121,6 +247,15 @@ def init_db():
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
+
+            # Migration: Add meeting_type column if it doesn't exist
+            try:
+                c.execute('''
+                    ALTER TABLE meetings
+                    ADD COLUMN IF NOT EXISTS meeting_type TEXT DEFAULT 'general'
+                ''')
+            except Exception as e:
+                print(f"Migration note: {e}")
 
             conn.commit()
             conn.close()
@@ -243,6 +378,16 @@ def jwt_required(f):
 # ============================================================
 # AUTHENTICATION ROUTES
 # ============================================================
+
+@app.route('/auth/login', methods=['GET'])
+def login_page():
+    """Serve login page"""
+    return render_template('login.html')
+
+@app.route('/auth/register', methods=['GET'])
+def register_page():
+    """Serve registration page"""
+    return render_template('register.html')
 
 @app.route('/auth/register', methods=['POST'])
 def register():
@@ -554,6 +699,14 @@ def upload_meeting():
         title = request.form.get('title', 'Untitled Meeting')
         attendees = request.form.get('attendees', '')
         tags = request.form.get('tags', '')
+        meeting_type = request.form.get('meeting_type', 'auto-detect')  # User can select or auto-detect
+
+        # Validate meeting_type
+        valid_types = ['auto-detect', 'standup', 'retrospective', 'planning', 'one-on-one',
+                      'team-sync', 'brainstorming', 'review', 'client-call', 'interview',
+                      'training', 'general']
+        if meeting_type not in valid_types:
+            meeting_type = 'auto-detect'
 
         # Save uploaded file
         filename = secure_filename(file.filename)
@@ -563,39 +716,47 @@ def upload_meeting():
         file.save(filepath)
 
         # Create initial database entry with user_id
+        # If user selected a specific type, use it; otherwise it will be auto-detected during processing
+        initial_meeting_type = meeting_type if meeting_type != 'auto-detect' else 'general'
+
         conn = get_db()
         try:
             c = conn.cursor()
             c.execute('''
-                INSERT INTO meetings (user_id, title, audio_file, attendees, tags, status)
-                VALUES (%s, %s, %s, %s, %s, 'processing')
+                INSERT INTO meetings (user_id, title, audio_file, attendees, tags, meeting_type, status)
+                VALUES (%s, %s, %s, %s, %s, %s, 'queued')
                 RETURNING id
-            ''', (request.current_user['user_id'], title, filename, attendees, tags))
+            ''', (request.current_user['user_id'], title, filename, attendees, tags, initial_meeting_type))
             meeting_id = c.fetchone()[0]
             conn.commit()
         finally:
             conn.close()
 
-        # Process the meeting asynchronously
-        try:
-            process_meeting_audio(filepath, meeting_id, title)
-        except Exception as e:
-            # Update status to error
-            conn = get_db()
-            try:
-                c = conn.cursor()
-                c.execute('UPDATE meetings SET status = %s WHERE id = %s AND user_id = %s', ('error', meeting_id, request.current_user['user_id']))
-                conn.commit()
-            finally:
-                conn.close()
-            return jsonify({'error': str(e)}), 500
+        # Add to processing queue (instead of blocking)
+        queue_info = enqueue_audio_job(meeting_id, filepath, title)
 
-        return redirect(url_for('view_meeting', meeting_id=meeting_id))
+        # Return immediately with queue info
+        return jsonify({
+            'success': True,
+            'meeting_id': meeting_id,
+            'message': 'Meeting uploaded and queued for processing',
+            'queue_info': queue_info
+        }), 202  # 202 Accepted - processing will happen asynchronously
 
     return render_template('upload.html', user=request.current_user)
 
 def process_meeting_audio(audio_path, meeting_id, title):
     """Process audio through Whisper and Ollama"""
+
+    # Check if user manually set meeting type
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute('SELECT meeting_type FROM meetings WHERE id = %s', (meeting_id,))
+        result = c.fetchone()
+        user_specified_type = result['meeting_type'] if result else 'general'
+    finally:
+        conn.close()
 
     # Step 1: Transcribe with Whisper
     print(f"Transcribing audio for meeting {meeting_id}...")
@@ -637,12 +798,16 @@ Transcript:
 {transcript}
 
 Please provide:
-1. A brief summary (2-3 paragraphs)
-2. Key discussion points (as a list)
-3. Action items with assignees if mentioned (as a list)
-4. Important decisions made (as a list)
+1. Meeting type classification (choose ONE from: standup, retrospective, planning, one-on-one, team-sync, brainstorming, review, client-call, interview, training, general)
+2. A brief summary (2-3 paragraphs)
+3. Key discussion points (as a list)
+4. Action items with assignees if mentioned (as a list)
+5. Important decisions made (as a list)
 
 Format your response as follows:
+
+MEETING TYPE:
+[meeting type here - must be one of: standup, retrospective, planning, one-on-one, team-sync, brainstorming, review, client-call, interview, training, general]
 
 SUMMARY:
 [Your summary here]
@@ -676,25 +841,29 @@ DECISIONS:
         analysis_text = ollama_response.json().get('response', '')
 
         # Parse the structured response
-        summary, key_points, action_items, decisions = parse_analysis(analysis_text)
+        meeting_type, summary, key_points, action_items, decisions = parse_analysis(analysis_text)
 
     except Exception as e:
         print(f"Analysis error: {e}")
+        meeting_type = "general"
         summary = "Analysis failed"
         key_points = []
         action_items = []
         decisions = []
 
     # Step 3: Update database with results
+    # Use auto-detected type only if user didn't specify one
+    final_meeting_type = meeting_type if user_specified_type == 'general' else user_specified_type
+
     conn = get_db()
     try:
         c = conn.cursor()
         c.execute('''
             UPDATE meetings
-            SET transcript = %s, summary = %s, key_points = %s, action_items = %s, decisions = %s, status = 'completed'
+            SET transcript = %s, summary = %s, key_points = %s, action_items = %s, decisions = %s, meeting_type = %s, status = 'completed'
             WHERE id = %s
         ''', (transcript, summary, json.dumps(key_points), json.dumps(action_items),
-              json.dumps(decisions), meeting_id))
+              json.dumps(decisions), final_meeting_type, meeting_id))
         conn.commit()
     finally:
         conn.close()
@@ -703,6 +872,7 @@ DECISIONS:
 
 def parse_analysis(text):
     """Parse the structured analysis response"""
+    meeting_type = "general"
     summary = ""
     key_points = []
     action_items = []
@@ -711,10 +881,17 @@ def parse_analysis(text):
     current_section = None
     lines = text.split('\n')
 
+    # Valid meeting types
+    valid_types = ['standup', 'retrospective', 'planning', 'one-on-one', 'team-sync',
+                   'brainstorming', 'review', 'client-call', 'interview', 'training', 'general']
+
     for line in lines:
         line = line.strip()
 
-        if 'SUMMARY:' in line.upper():
+        if 'MEETING TYPE:' in line.upper():
+            current_section = 'meeting_type'
+            continue
+        elif 'SUMMARY:' in line.upper():
             current_section = 'summary'
             continue
         elif 'KEY POINTS:' in line.upper() or 'KEY DISCUSSION POINTS:' in line.upper():
@@ -727,7 +904,14 @@ def parse_analysis(text):
             current_section = 'decisions'
             continue
 
-        if current_section == 'summary' and line:
+        if current_section == 'meeting_type' and line:
+            # Extract meeting type from line
+            for valid_type in valid_types:
+                if valid_type.lower() in line.lower():
+                    meeting_type = valid_type
+                    break
+            current_section = None
+        elif current_section == 'summary' and line:
             summary += line + " "
         elif current_section == 'key_points' and line.startswith('-'):
             key_points.append(line[1:].strip())
@@ -736,7 +920,7 @@ def parse_analysis(text):
         elif current_section == 'decisions' and line.startswith('-'):
             decisions.append(line[1:].strip())
 
-    return summary.strip(), key_points, action_items, decisions
+    return meeting_type, summary.strip(), key_points, action_items, decisions
 
 @app.route('/meeting/<int:meeting_id>')
 @jwt_required
@@ -1114,8 +1298,9 @@ DECISIONS:
 
         if ollama_response.status_code == 200:
             analysis_text = ollama_response.json().get('response', '')
-            summary, key_points, action_items, decisions = parse_analysis(analysis_text)
+            meeting_type, summary, key_points, action_items, decisions = parse_analysis(analysis_text)
         else:
+            meeting_type = "general"
             summary = "Analysis unavailable"
             key_points = []
             action_items = []
@@ -1123,6 +1308,7 @@ DECISIONS:
 
     except Exception as e:
         print(f"Analysis error: {e}")
+        meeting_type = "general"
         summary = "Analysis failed"
         key_points = []
         action_items = []
@@ -1134,10 +1320,10 @@ DECISIONS:
         c = conn.cursor()
         c.execute('''
             UPDATE meetings
-            SET transcript = %s, summary = %s, key_points = %s, action_items = %s, decisions = %s, status = 'completed'
+            SET transcript = %s, summary = %s, key_points = %s, action_items = %s, decisions = %s, meeting_type = %s, status = 'completed'
             WHERE id = %s
         ''', (full_transcript, summary, json.dumps(key_points), json.dumps(action_items),
-              json.dumps(decisions), meeting_id))
+              json.dumps(decisions), meeting_type, meeting_id))
         conn.commit()
     finally:
         conn.close()
@@ -1163,6 +1349,38 @@ DECISIONS:
 def live_recording_page():
     """Live recording interface"""
     return render_template('live.html', user=request.current_user)
+
+@app.route('/api/queue/status', methods=['GET'])
+@jwt_required
+def queue_status():
+    """Get queue status and user's jobs"""
+    with queue_lock:
+        # Get active jobs for current user
+        user_active_jobs = [
+            {
+                'job_id': job_id,
+                'meeting_id': job['meeting_id'],
+                'status': job['status'],
+                'started_at': job.get('started_at'),
+                'processing_time': time.time() - job.get('started_at', time.time()) if 'started_at' in job else 0
+            }
+            for job_id, job in active_jobs.items()
+        ]
+
+        # Get queue size and active count
+        queue_size = processing_queue.qsize()
+        active_count = len([j for j in active_jobs.values() if j['status'] == 'processing'])
+        max_concurrent = app.config['MAX_CONCURRENT_JOBS']
+
+    return jsonify({
+        'queue': {
+            'size': queue_size,
+            'active_jobs': active_count,
+            'max_concurrent': max_concurrent,
+            'available_workers': max_concurrent - active_count
+        },
+        'user_jobs': user_active_jobs
+    }), 200
 
 @app.route('/health')
 def health_check():
