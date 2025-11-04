@@ -131,6 +131,49 @@
         </div>
     </div>
 
+    <!-- Calendar Integration (Notion-style Auto-Record) -->
+    <div style="margin-bottom: 40px;">
+        <h2 style="font-size: 18px; font-weight: 600; color: var(--notion-text); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+            <span>📅</span>
+            <span>Calendar Integration</span>
+        </h2>
+
+        <div style="background: var(--notion-bg); border: 1px solid var(--notion-border); border-radius: 6px; padding: 20px;">
+            <div id="calendar-status">
+                <p style="font-size: 14px; color: var(--notion-text); margin-bottom: 16px;">
+                    Connect your Google Calendar to get automatic prompts when meetings start. Just like Notion!
+                </p>
+
+                <div id="calendar-connected" style="display: none;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px; background: #d3f8df; border: 1px solid #4ade80; border-radius: 6px; margin-bottom: 16px;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 20px;">✓</span>
+                            <span style="font-size: 14px; font-weight: 500; color: #0c6b42;">Calendar Connected</span>
+                        </div>
+                    </div>
+                    <p style="font-size: 13px; color: var(--notion-gray); margin-bottom: 12px; line-height: 1.6;">
+                        ✨ When a meeting is about to start, you'll see a notification and prompt to record it. Click "Record This Meeting" to start recording in one click!
+                    </p>
+                    <button onclick="disconnectCalendar()" style="padding: 8px 16px; background: none; color: var(--notion-red); border: 1px solid var(--notion-red); border-radius: 3px; cursor: pointer; font-family: inherit; font-size: 14px;">
+                        Disconnect Calendar
+                    </button>
+                </div>
+
+                <div id="calendar-disconnected">
+                    <ul style="font-size: 13px; color: var(--notion-gray); margin-bottom: 16px; line-height: 1.8; padding-left: 20px;">
+                        <li>Auto-detect meetings 5 minutes before they start</li>
+                        <li>Browser notification + in-app prompt</li>
+                        <li>One-click to start recording</li>
+                        <li>Meeting title automatically filled</li>
+                    </ul>
+                    <button onclick="connectCalendar()" class="notion-btn notion-btn-primary" style="padding: 10px 20px; font-size: 14px;">
+                        📅 Connect Google Calendar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Preferences -->
     <div style="margin-bottom: 40px;">
         <h2 style="font-size: 18px; font-weight: 600; color: var(--notion-text); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
@@ -333,5 +376,119 @@
     // Update theme text
     const theme = localStorage.getItem('theme') || 'light';
     document.getElementById('theme-text').textContent = theme === 'dark' ? 'Switch to Light' : 'Switch to Dark';
+
+    // ============================================================
+    // Calendar Integration
+    // ============================================================
+
+    async function checkCalendarStatus() {
+        try {
+            const response = await fetch('/api/calendar/status');
+            if (response.ok) {
+                const data = await response.json();
+                if (data.connected) {
+                    document.getElementById('calendar-connected').style.display = 'block';
+                    document.getElementById('calendar-disconnected').style.display = 'none';
+                } else {
+                    document.getElementById('calendar-connected').style.display = 'none';
+                    document.getElementById('calendar-disconnected').style.display = 'block';
+                }
+            }
+        } catch (error) {
+            console.error('Error checking calendar status:', error);
+        }
+    }
+
+    async function connectCalendar() {
+        try {
+            const response = await fetch('/api/calendar/connect', {
+                method: 'POST'
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                // Open Google OAuth in popup
+                const width = 500;
+                const height = 600;
+                const left = (screen.width / 2) - (width / 2);
+                const top = (screen.height / 2) - (height / 2);
+
+                window.open(
+                    data.authorization_url,
+                    'Google Calendar OAuth',
+                    `width=${width},height=${height},left=${left},top=${top}`
+                );
+
+                // Check status every 3 seconds to see if connection completed
+                const checkInterval = setInterval(async () => {
+                    await checkCalendarStatus();
+                    const connected = document.getElementById('calendar-connected').style.display === 'block';
+                    if (connected) {
+                        clearInterval(checkInterval);
+                        alert('✓ Calendar connected successfully! You\'ll now get prompts when meetings start.');
+                    }
+                }, 3000);
+
+                // Stop checking after 2 minutes
+                setTimeout(() => clearInterval(checkInterval), 120000);
+            } else {
+                const data = await response.json();
+                alert(data.error || 'Failed to connect calendar');
+            }
+        } catch (error) {
+            console.error('Error connecting calendar:', error);
+            alert('Failed to connect calendar. Please try again.');
+        }
+    }
+
+    async function disconnectCalendar() {
+        if (!confirm('Disconnect Google Calendar? You will no longer receive meeting prompts.')) {
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/calendar/disconnect', {
+                method: 'POST'
+            });
+
+            if (response.ok) {
+                alert('Calendar disconnected successfully.');
+                await checkCalendarStatus();
+            } else {
+                alert('Failed to disconnect calendar');
+            }
+        } catch (error) {
+            console.error('Error disconnecting calendar:', error);
+            alert('Failed to disconnect calendar. Please try again.');
+        }
+    }
+
+    // Check calendar status on page load
+    checkCalendarStatus();
+
+    // Handle OAuth callback if present in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('calendar') === 'success') {
+        const token = urlParams.get('token');
+        const refresh = urlParams.get('refresh');
+        const expiry = urlParams.get('expiry');
+
+        if (token) {
+            // Save token via API
+            fetch('/api/calendar/save-token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    access_token: token,
+                    refresh_token: refresh,
+                    expiry: expiry
+                })
+            }).then(() => {
+                // Clean URL and show success
+                window.history.replaceState({}, document.title, '/settings');
+                checkCalendarStatus();
+            });
+        }
+    }
 </script>
 {% endblock %}

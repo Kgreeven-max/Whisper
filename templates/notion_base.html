@@ -1063,6 +1063,139 @@
             const initials = username.substring(0, 2).toUpperCase();
             document.getElementById('user-avatar').textContent = initials;
         }
+
+        // ============================================================
+        // Meeting Detection Service (Notion-style auto-record prompt)
+        // ============================================================
+
+        // Request notification permission on page load
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+
+        // Check for upcoming meetings every minute
+        let meetingCheckInterval;
+        let currentMeetingPrompt = null;
+
+        function checkForMeetings() {
+            fetch('/api/calendar/check-meetings')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.meetings_starting && data.meetings_starting.length > 0) {
+                        // Meeting starting soon - show prompt!
+                        data.meetings_starting.forEach(meeting => {
+                            showRecordingPrompt(meeting);
+                        });
+                    }
+                })
+                .catch(err => {
+                    // Silent fail if calendar not connected
+                    console.log('Calendar check:', err.message);
+                });
+        }
+
+        function showRecordingPrompt(meeting) {
+            // Don't show multiple prompts
+            if (currentMeetingPrompt) return;
+
+            // Show browser notification
+            if ('Notification' in window && Notification.permission === 'granted') {
+                const notification = new Notification('Meeting Starting Soon', {
+                    body: `${meeting.summary} starts in a few minutes. Record this meeting?`,
+                    icon: '/static/icon.png',
+                    requireInteraction: true
+                });
+
+                notification.onclick = () => {
+                    window.focus();
+                    notification.close();
+                };
+            }
+
+            // Show Notion-style modal prompt
+            const promptHtml = `
+                <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--notion-bg); border: 1px solid var(--notion-border); border-radius: 8px; padding: 32px; box-shadow: 0 16px 48px rgba(0,0,0,0.15); z-index: 10000; max-width: 480px; width: 90%;">
+                    <div style="text-align: center; margin-bottom: 24px;">
+                        <div style="font-size: 48px; margin-bottom: 16px;">🎙️</div>
+                        <h2 style="font-size: 24px; font-weight: 600; color: var(--notion-text); margin-bottom: 8px;">
+                            Meeting Starting Soon
+                        </h2>
+                        <p style="font-size: 16px; color: var(--notion-text); font-weight: 500; margin-bottom: 4px;">
+                            ${meeting.summary}
+                        </p>
+                        <p style="font-size: 14px; color: var(--notion-gray);">
+                            ${new Date(meeting.start).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                            ${meeting.attendees && meeting.attendees.length > 0 ? ` • ${meeting.attendees.length} attendee${meeting.attendees.length > 1 ? 's' : ''}` : ''}
+                        </p>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <button onclick="startRecordingNow('${meeting.id}', '${meeting.summary.replace(/'/g, "\\'")}')" style="padding: 14px 24px; background: var(--notion-blue); color: white; border: none; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 16px; font-weight: 600; transition: all 0.2s ease;">
+                            🎙️ Record This Meeting
+                        </button>
+                        <button onclick="dismissPrompt()" style="padding: 12px 24px; background: none; color: var(--notion-text); border: 1px solid var(--notion-border); border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 14px; transition: all 0.2s ease;">
+                            Not Now
+                        </button>
+                    </div>
+
+                    <p style="font-size: 12px; color: var(--notion-gray); text-align: center; margin-top: 20px; line-height: 1.5;">
+                        Recording will start in your browser. You can stop anytime and the meeting will be transcribed automatically.
+                    </p>
+                </div>
+            `;
+
+            currentMeetingPrompt = document.createElement('div');
+            currentMeetingPrompt.id = 'meeting-prompt-overlay';
+            currentMeetingPrompt.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); z-index: 9999; animation: fadeIn 0.3s ease;';
+            currentMeetingPrompt.innerHTML = promptHtml;
+
+            document.body.appendChild(currentMeetingPrompt);
+        }
+
+        function dismissPrompt() {
+            if (currentMeetingPrompt) {
+                currentMeetingPrompt.style.animation = 'fadeOut 0.2s ease';
+                setTimeout(() => {
+                    currentMeetingPrompt.remove();
+                    currentMeetingPrompt = null;
+                }, 200);
+            }
+        }
+
+        function startRecordingNow(eventId, meetingTitle) {
+            // Store event ID and title for the recording
+            localStorage.setItem('recording_event_id', eventId);
+            localStorage.setItem('recording_title', meetingTitle);
+
+            // Dismiss prompt
+            dismissPrompt();
+
+            // Navigate to live recording page
+            window.location.href = '/live?auto=true&title=' + encodeURIComponent(meetingTitle);
+        }
+
+        // Start checking for meetings every minute
+        if (isAuthenticated()) {
+            // Check immediately on load
+            checkForMeetings();
+
+            // Then check every 60 seconds
+            meetingCheckInterval = setInterval(checkForMeetings, 60000);
+        }
+
+        // Add CSS animations for smooth prompts
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes fadeIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
+            }
+            @keyframes fadeOut {
+                from { opacity: 1; }
+                to { opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
     </script>
     {% block extra_js %}{% endblock %}
 </body>

@@ -250,6 +250,34 @@ def init_db():
                 )
             ''')
 
+            # Create calendar tokens table for Google Calendar integration
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS calendar_tokens (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+                    access_token TEXT NOT NULL,
+                    refresh_token TEXT,
+                    token_expiry TIMESTAMP,
+                    calendar_id TEXT DEFAULT 'primary',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
+            # Create calendar events tracking table (to avoid duplicate prompts)
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS calendar_events_prompted (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    event_id TEXT NOT NULL,
+                    event_start TIMESTAMP NOT NULL,
+                    prompted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    recording_started BOOLEAN DEFAULT FALSE,
+                    meeting_id INTEGER REFERENCES meetings(id) ON DELETE SET NULL,
+                    UNIQUE(user_id, event_id)
+                )
+            ''')
+
             # Migrations: Add new columns if they don't exist
             try:
                 c.execute('''
@@ -812,6 +840,290 @@ def table_view():
 def settings():
     """User settings page"""
     return render_template('notion_settings.html', user=request.current_user)
+
+# ============================================================
+# Google Calendar Integration (Notion-style auto-record)
+# ============================================================
+
+@app.route('/api/calendar/connect', methods=['POST'])
+@jwt_required
+def calendar_connect():
+    """Initiate Google Calendar OAuth flow"""
+    from google_auth_oauthlib.flow import Flow
+    import json
+
+    # Google OAuth credentials (you'll need to create these in Google Cloud Console)
+    client_config = {
+        "web": {
+            "client_id": os.getenv('GOOGLE_CLIENT_ID'),
+            "client_secret": os.getenv('GOOGLE_CLIENT_SECRET'),
+            "redirect_uris": [f"{os.getenv('APP_URL', 'http://localhost:8080')}/api/calendar/callback"],
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token"
+        }
+    }
+
+    if not client_config["web"]["client_id"]:
+        return jsonify({'error': 'Google Calendar not configured. Set GOOGLE_CLIENT_ID in .env'}), 500
+
+    flow = Flow.from_client_config(
+        client_config,
+        scopes=['https://www.googleapis.com/auth/calendar.readonly'],
+        redirect_uri=client_config["web"]["redirect_uris"][0]
+    )
+
+    authorization_url, state = flow.authorization_url(
+        access_type='offline',
+        include_granted_scopes='true',
+        prompt='consent'
+    )
+
+    # Store state in session or database for verification
+    return jsonify({'authorization_url': authorization_url, 'state': state})
+
+@app.route('/api/calendar/callback')
+def calendar_callback():
+    """Handle Google Calendar OAuth callback"""
+    from google_auth_oauthlib.flow import Flow
+    from google.oauth2.credentials import Credentials
+    import datetime
+
+    # Get authorization code from query params
+    code = request.args.get('code')
+    if not code:
+        return "Error: No authorization code received", 400
+
+    client_config = {
+        "web": {
+            "client_id": os.getenv('GOOGLE_CLIENT_ID'),
+            "client_secret": os.getenv('GOOGLE_CLIENT_SECRET'),
+            "redirect_uris": [f"{os.getenv('APP_URL', 'http://localhost:8080')}/api/calendar/callback"],
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token"
+        }
+    }
+
+    flow = Flow.from_client_config(
+        client_config,
+        scopes=['https://www.googleapis.com/auth/calendar.readonly'],
+        redirect_uri=client_config["web"]["redirect_uris"][0]
+    )
+
+    flow.fetch_token(code=code)
+    credentials = flow.credentials
+
+    # Get user from JWT (if available in cookies/headers)
+    # For now, redirect to a page that will store the token with JWT
+    return redirect(f'/settings?calendar=success&token={credentials.token}&refresh={credentials.refresh_token}&expiry={credentials.expiry.isoformat()}')
+
+@app.route('/api/calendar/save-token', methods=['POST'])
+@jwt_required
+def calendar_save_token():
+    """Save calendar token after OAuth callback"""
+    from datetime import datetime
+
+    data = request.get_json()
+    access_token = data.get('access_token')
+    refresh_token = data.get('refresh_token')
+    expiry = data.get('expiry')
+
+    if not access_token:
+        return jsonify({'error': 'No access token provided'}), 400
+
+    conn = get_db()
+    try:
+        c = conn.cursor()
+
+        # Upsert calendar token
+        c.execute('''
+            INSERT INTO calendar_tokens (user_id, access_token, refresh_token, token_expiry)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (user_id)
+            DO UPDATE SET
+                access_token = EXCLUDED.access_token,
+                refresh_token = EXCLUDED.refresh_token,
+                token_expiry = EXCLUDED.token_expiry,
+                updated_at = CURRENT_TIMESTAMP
+        ''', (request.current_user['user_id'], access_token, refresh_token, expiry))
+
+        conn.commit()
+        return jsonify({'success': True})
+    finally:
+        conn.close()
+
+@app.route('/api/calendar/disconnect', methods=['POST'])
+@jwt_required
+def calendar_disconnect():
+    """Disconnect Google Calendar"""
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute('DELETE FROM calendar_tokens WHERE user_id = %s',
+                 (request.current_user['user_id'],))
+        conn.commit()
+        return jsonify({'success': True})
+    finally:
+        conn.close()
+
+@app.route('/api/calendar/status')
+@jwt_required
+def calendar_status():
+    """Check if user has calendar connected"""
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute('SELECT token_expiry FROM calendar_tokens WHERE user_id = %s',
+                 (request.current_user['user_id'],))
+        result = c.fetchone()
+
+        if result:
+            return jsonify({'connected': True, 'expiry': result['token_expiry'].isoformat() if result['token_expiry'] else None})
+        else:
+            return jsonify({'connected': False})
+    finally:
+        conn.close()
+
+@app.route('/api/calendar/upcoming')
+@jwt_required
+def calendar_upcoming():
+    """Get upcoming meetings from Google Calendar"""
+    from google.oauth2.credentials import Credentials
+    from googleapiclient.discovery import build
+    from datetime import datetime, timedelta
+
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute('SELECT access_token, refresh_token, token_expiry FROM calendar_tokens WHERE user_id = %s',
+                 (request.current_user['user_id'],))
+        token_data = c.fetchone()
+
+        if not token_data:
+            return jsonify({'error': 'Calendar not connected'}), 401
+
+        # Create credentials
+        creds = Credentials(
+            token=token_data['access_token'],
+            refresh_token=token_data['refresh_token'],
+            token_uri='https://oauth2.googleapis.com/token',
+            client_id=os.getenv('GOOGLE_CLIENT_ID'),
+            client_secret=os.getenv('GOOGLE_CLIENT_SECRET')
+        )
+
+        # Build calendar service
+        service = build('calendar', 'v3', credentials=creds)
+
+        # Get events for next 24 hours
+        now = datetime.utcnow()
+        time_max = now + timedelta(hours=24)
+
+        events_result = service.events().list(
+            calendarId='primary',
+            timeMin=now.isoformat() + 'Z',
+            timeMax=time_max.isoformat() + 'Z',
+            maxResults=20,
+            singleEvents=True,
+            orderBy='startTime'
+        ).execute()
+
+        events = events_result.get('items', [])
+
+        # Format events
+        formatted_events = []
+        for event in events:
+            start = event['start'].get('dateTime', event['start'].get('date'))
+            formatted_events.append({
+                'id': event['id'],
+                'summary': event.get('summary', 'No Title'),
+                'start': start,
+                'end': event['end'].get('dateTime', event['end'].get('date')),
+                'location': event.get('location'),
+                'attendees': [a.get('email') for a in event.get('attendees', [])]
+            })
+
+        return jsonify({'events': formatted_events})
+    except Exception as e:
+        print(f"Calendar error: {e}")
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/calendar/check-meetings')
+@jwt_required
+def calendar_check_meetings():
+    """Check if any meetings are starting soon (called by frontend every minute)"""
+    from google.oauth2.credentials import Credentials
+    from googleapiclient.discovery import build
+    from datetime import datetime, timedelta
+
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute('SELECT access_token, refresh_token FROM calendar_tokens WHERE user_id = %s',
+                 (request.current_user['user_id'],))
+        token_data = c.fetchone()
+
+        if not token_data:
+            return jsonify({'meetings_starting': []})
+
+        # Create credentials
+        creds = Credentials(
+            token=token_data['access_token'],
+            refresh_token=token_data['refresh_token'],
+            token_uri='https://oauth2.googleapis.com/token',
+            client_id=os.getenv('GOOGLE_CLIENT_ID'),
+            client_secret=os.getenv('GOOGLE_CLIENT_SECRET')
+        )
+
+        # Build calendar service
+        service = build('calendar', 'v3', credentials=creds)
+
+        # Get events starting in the next 5 minutes
+        now = datetime.utcnow()
+        time_min = now
+        time_max = now + timedelta(minutes=5)
+
+        events_result = service.events().list(
+            calendarId='primary',
+            timeMin=time_min.isoformat() + 'Z',
+            timeMax=time_max.isoformat() + 'Z',
+            maxResults=10,
+            singleEvents=True,
+            orderBy='startTime'
+        ).execute()
+
+        events = events_result.get('items', [])
+
+        # Filter out events we've already prompted for
+        meetings_to_prompt = []
+        for event in events:
+            # Check if we've already prompted for this event
+            c.execute('SELECT id FROM calendar_events_prompted WHERE user_id = %s AND event_id = %s',
+                     (request.current_user['user_id'], event['id']))
+
+            if not c.fetchone():
+                # Haven't prompted yet - add to list
+                start = event['start'].get('dateTime', event['start'].get('date'))
+                meetings_to_prompt.append({
+                    'id': event['id'],
+                    'summary': event.get('summary', 'No Title'),
+                    'start': start,
+                    'attendees': [a.get('email') for a in event.get('attendees', [])]
+                })
+
+                # Mark as prompted
+                c.execute('''
+                    INSERT INTO calendar_events_prompted (user_id, event_id, event_start)
+                    VALUES (%s, %s, %s)
+                ''', (request.current_user['user_id'], event['id'], start))
+
+        conn.commit()
+        return jsonify({'meetings_starting': meetings_to_prompt})
+    except Exception as e:
+        print(f"Calendar check error: {e}")
+        return jsonify({'meetings_starting': []})
+    finally:
+        conn.close()
 
 @app.route('/api/change-password', methods=['POST'])
 @jwt_required
