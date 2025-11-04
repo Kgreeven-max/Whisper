@@ -1,0 +1,349 @@
+#!/bin/bash
+set -e
+
+# Meeting Transcriber - Interactive Setup
+# This script does EVERYTHING for you!
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+echo ""
+echo -e "${BOLD}${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${BOLD}${CYAN}║                                                            ║${NC}"
+echo -e "${BOLD}${CYAN}║         🎙️  Meeting Transcriber Setup Wizard  🎙️          ║${NC}"
+echo -e "${BOLD}${CYAN}║                                                            ║${NC}"
+echo -e "${BOLD}${CYAN}║           One-Command Notion-Style Deployment             ║${NC}"
+echo -e "${BOLD}${CYAN}║                                                            ║${NC}"
+echo -e "${BOLD}${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
+echo ""
+echo -e "${BOLD}This wizard will:${NC}"
+echo "  ✓ Generate secure passwords automatically"
+echo "  ✓ Create configuration files"
+echo "  ✓ Install Docker (if needed)"
+echo "  ✓ Deploy all services"
+echo "  ✓ Pull AI models"
+echo "  ✓ Get you up and running in ~10 minutes"
+echo ""
+echo -e "${YELLOW}Press Enter to start, or Ctrl+C to cancel${NC}"
+read
+
+# Check if running as root
+if [[ $EUID -eq 0 ]]; then
+   echo -e "${RED}Please run as a regular user (not root)${NC}"
+   echo "Example: ./setup.sh"
+   exit 1
+fi
+
+# Function to check if command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Generate secure random string
+generate_password() {
+    if command_exists python3; then
+        python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+    elif command_exists openssl; then
+        openssl rand -base64 32 | tr -d "=+/" | cut -c1-32
+    else
+        # Fallback to /dev/urandom
+        cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -n 1
+    fi
+}
+
+generate_secret() {
+    if command_exists python3; then
+        python3 -c "import secrets; print(secrets.token_hex(32))"
+    elif command_exists openssl; then
+        openssl rand -hex 32
+    else
+        cat /dev/urandom | tr -dc 'a-f0-9' | fold -w 64 | head -n 1
+    fi
+}
+
+echo ""
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BOLD}Step 1: System Configuration${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+# Ask for VPS specs
+echo -e "${BOLD}How much RAM does your VPS have?${NC}"
+echo "  1) 2GB RAM  (will use tiny models - basic quality)"
+echo "  2) 4GB RAM  (will use base models - good quality)"
+echo "  3) 8GB RAM  (will use small models - very good quality) ${GREEN}← Recommended${NC}"
+echo "  4) 16GB+ RAM (will use medium models - excellent quality)"
+echo ""
+read -p "Select [3]: " ram_choice
+ram_choice=${ram_choice:-3}
+
+case $ram_choice in
+    1)
+        WHISPER_MODEL="tiny"
+        OLLAMA_MODEL="phi"
+        echo -e "${YELLOW}→ Configured for 2GB RAM (tiny/phi models)${NC}"
+        ;;
+    2)
+        WHISPER_MODEL="base"
+        OLLAMA_MODEL="phi"
+        echo -e "${YELLOW}→ Configured for 4GB RAM (base/phi models)${NC}"
+        ;;
+    3)
+        WHISPER_MODEL="small"
+        OLLAMA_MODEL="phi"
+        echo -e "${GREEN}→ Configured for 8GB RAM (small/phi models)${NC}"
+        ;;
+    4)
+        WHISPER_MODEL="medium"
+        OLLAMA_MODEL="mistral"
+        echo -e "${GREEN}→ Configured for 16GB+ RAM (medium/mistral models)${NC}"
+        ;;
+    *)
+        WHISPER_MODEL="small"
+        OLLAMA_MODEL="phi"
+        echo -e "${GREEN}→ Configured for 8GB RAM (small/phi models)${NC}"
+        ;;
+esac
+
+echo ""
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BOLD}Step 2: Security Configuration${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+echo -e "${BOLD}Generating secure passwords...${NC}"
+echo ""
+
+# Generate passwords
+POSTGRES_PASSWORD=$(generate_password)
+SECRET_KEY=$(generate_secret)
+
+echo -e "${GREEN}✓ PostgreSQL password generated (32 characters)${NC}"
+echo -e "${GREEN}✓ Flask secret key generated (64 characters)${NC}"
+echo ""
+
+# Offer to show passwords (for manual backup)
+echo -e "${YELLOW}Would you like to see the generated passwords? (for backup/reference)${NC}"
+read -p "Show passwords? [y/N]: " show_passwords
+
+if [[ $show_passwords =~ ^[Yy]$ ]]; then
+    echo ""
+    echo -e "${BOLD}Generated Passwords (save these securely!):${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "PostgreSQL Password: ${BOLD}$POSTGRES_PASSWORD${NC}"
+    echo -e "Flask Secret Key:    ${BOLD}$SECRET_KEY${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "${YELLOW}Press Enter when you've saved these...${NC}"
+    read
+fi
+
+# Create .env file
+echo -e "${BOLD}Creating configuration file...${NC}"
+
+cat > .env << EOF
+# Meeting Transcriber Configuration
+# Auto-generated by setup.sh on $(date)
+
+# PostgreSQL Database
+POSTGRES_DB=meetings
+POSTGRES_USER=meeting_user
+POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+
+# Flask Security
+FLASK_ENV=production
+SECRET_KEY=$SECRET_KEY
+
+# AI Models (optimized for your RAM)
+WHISPER_MODEL=$WHISPER_MODEL
+OLLAMA_MODEL=$OLLAMA_MODEL
+EOF
+
+chmod 600 .env
+
+echo -e "${GREEN}✓ Configuration file created (.env)${NC}"
+echo -e "${GREEN}✓ File permissions secured (600)${NC}"
+echo ""
+
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BOLD}Step 3: Docker Installation${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+# Check Docker
+if ! command_exists docker; then
+    echo -e "${YELLOW}Docker not found. Installing Docker...${NC}"
+    echo ""
+
+    # Install Docker
+    curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+    sudo sh /tmp/get-docker.sh
+    sudo usermod -aG docker $USER
+    rm /tmp/get-docker.sh
+
+    echo ""
+    echo -e "${GREEN}✓ Docker installed successfully${NC}"
+    echo ""
+    echo -e "${YELLOW}⚠️  You need to log out and log back in for Docker permissions${NC}"
+    echo ""
+    read -p "Log out now and re-run this script? [Y/n]: " logout_choice
+
+    if [[ ! $logout_choice =~ ^[Nn]$ ]]; then
+        echo ""
+        echo -e "${GREEN}After logging back in, run:${NC}"
+        echo -e "  ${BOLD}./setup.sh${NC}"
+        echo ""
+        exit 0
+    fi
+else
+    echo -e "${GREEN}✓ Docker already installed${NC}"
+fi
+
+# Check Docker Compose
+if ! command_exists docker-compose; then
+    echo -e "${YELLOW}Installing Docker Compose...${NC}"
+    sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    sudo chmod +x /usr/local/bin/docker-compose
+    echo -e "${GREEN}✓ Docker Compose installed${NC}"
+else
+    echo -e "${GREEN}✓ Docker Compose already installed${NC}"
+fi
+
+echo ""
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BOLD}Step 4: Service Deployment${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+echo -e "${BOLD}Starting Docker services...${NC}"
+echo -e "${YELLOW}(This will take 2-3 minutes on first run)${NC}"
+echo ""
+
+docker-compose up -d --build
+
+echo ""
+echo -e "${BOLD}Waiting for services to start...${NC}"
+
+# Wait for services
+sleep 5
+
+# Check service health
+echo ""
+for i in {1..30}; do
+    if docker-compose ps | grep -q "Up"; then
+        break
+    fi
+    echo -n "."
+    sleep 1
+done
+
+echo ""
+echo ""
+docker-compose ps
+echo ""
+
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BOLD}Step 5: AI Model Installation${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+echo -e "${BOLD}Installing Ollama model: $OLLAMA_MODEL${NC}"
+echo -e "${YELLOW}(This will take 3-10 minutes depending on model size)${NC}"
+echo ""
+
+docker exec meeting-ollama ollama pull $OLLAMA_MODEL
+
+echo ""
+echo -e "${GREEN}✓ AI model installed successfully${NC}"
+
+echo ""
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BOLD}Step 6: Final Health Check${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+echo -e "${BOLD}Testing services...${NC}"
+echo ""
+
+# Test web app
+if curl -s http://localhost:8080/health | grep -q "healthy"; then
+    echo -e "${GREEN}✓ Web application: Running${NC}"
+else
+    echo -e "${RED}✗ Web application: Not responding${NC}"
+fi
+
+# Test Whisper
+if curl -s http://localhost:9000/ > /dev/null 2>&1; then
+    echo -e "${GREEN}✓ Whisper API: Running${NC}"
+else
+    echo -e "${YELLOW}⚠ Whisper API: Still starting (this is normal)${NC}"
+fi
+
+# Test Ollama
+if curl -s http://localhost:11434/ | grep -q "Ollama"; then
+    echo -e "${GREEN}✓ Ollama LLM: Running${NC}"
+else
+    echo -e "${YELLOW}⚠ Ollama LLM: Still starting (this is normal)${NC}"
+fi
+
+# Test database
+if docker exec meeting-postgres pg_isready -U meeting_user > /dev/null 2>&1; then
+    echo -e "${GREEN}✓ PostgreSQL: Running${NC}"
+else
+    echo -e "${RED}✗ PostgreSQL: Not responding${NC}"
+fi
+
+echo ""
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BOLD}${GREEN}✨ Setup Complete! ✨${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+# Get IP address
+VPS_IP=$(hostname -I | awk '{print $1}')
+
+echo -e "${BOLD}Your Meeting Transcriber is now running!${NC}"
+echo ""
+echo -e "${BOLD}📍 Access URL:${NC}"
+echo -e "   ${CYAN}${BOLD}http://$VPS_IP:8080${NC}"
+echo ""
+echo -e "${BOLD}📱 Next Steps:${NC}"
+echo "   1. Open the URL above in your browser"
+echo "   2. Upload a test audio file (1-2 minutes)"
+echo "   3. Wait for transcription to complete"
+echo "   4. Review the AI-generated summary!"
+echo ""
+echo -e "${BOLD}🎙️  For Notion-Style Auto-Recording:${NC}"
+echo "   Install desktop client on your computer:"
+echo "   ${CYAN}cd client && ./install_<your-os>.sh${NC}"
+echo "   Then run: ${CYAN}python3 meeting_monitor.py${NC}"
+echo ""
+echo -e "${BOLD}📚 Documentation:${NC}"
+echo "   Quick Start:          ${CYAN}cat START.md${NC}"
+echo "   Auto Detection:       ${CYAN}cat AUTO_DETECTION_SETUP.md${NC}"
+echo "   Production Guide:     ${CYAN}cat PRODUCTION_SETUP.md${NC}"
+echo "   Troubleshooting:      ${CYAN}cat TESTING.md${NC}"
+echo ""
+echo -e "${BOLD}🔧 Useful Commands:${NC}"
+echo "   View logs:            ${CYAN}docker-compose logs -f${NC}"
+echo "   Check status:         ${CYAN}docker-compose ps${NC}"
+echo "   Restart services:     ${CYAN}docker-compose restart${NC}"
+echo "   Stop services:        ${CYAN}docker-compose down${NC}"
+echo ""
+echo -e "${BOLD}📋 Your Configuration:${NC}"
+echo "   RAM Optimization:     ${GREEN}$WHISPER_MODEL whisper + $OLLAMA_MODEL ollama${NC}"
+echo "   Database:             ${GREEN}PostgreSQL (secured)${NC}"
+echo "   Config File:          ${GREEN}.env (permissions: 600)${NC}"
+echo ""
+echo -e "${YELLOW}💡 Tip: Bookmark http://$VPS_IP:8080 for easy access!${NC}"
+echo ""
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo -e "${BOLD}${GREEN}Happy Transcribing! 🎉${NC}"
+echo ""
