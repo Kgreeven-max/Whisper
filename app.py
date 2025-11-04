@@ -3,26 +3,26 @@ import requests
 import os
 import json
 import datetime
-import sqlite3
+import psycopg2
+import psycopg2.extras
 from werkzeug.utils import secure_filename
 import time
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = '/app/uploads'
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max
-app.config['DATABASE'] = '/app/data/meetings.db'
+app.config['DATABASE_URL'] = os.getenv('DATABASE_URL', 'postgresql://meeting_user:meeting_pass_change_in_production@postgres:5432/meetings')
 
 # Create upload directory if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-os.makedirs('/app/data', exist_ok=True)
 
 # Store active live recording sessions
 live_sessions = {}
 
 def get_db():
     """Get database connection"""
-    conn = sqlite3.connect(app.config['DATABASE'])
-    conn.row_factory = sqlite3.Row
+    conn = psycopg2.connect(app.config['DATABASE_URL'])
+    conn.cursor_factory = psycopg2.extras.DictCursor
     return conn
 
 def init_db():
@@ -31,7 +31,7 @@ def init_db():
     c = conn.cursor()
     c.execute('''
         CREATE TABLE IF NOT EXISTS meetings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             title TEXT NOT NULL,
             date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             audio_file TEXT,
@@ -88,9 +88,10 @@ def upload_meeting():
         c = conn.cursor()
         c.execute('''
             INSERT INTO meetings (title, audio_file, attendees, tags, status)
-            VALUES (?, ?, ?, ?, 'processing')
+            VALUES (%s, %s, %s, %s, 'processing')
+            RETURNING id
         ''', (title, filename, attendees, tags))
-        meeting_id = c.lastrowid
+        meeting_id = c.fetchone()[0]
         conn.commit()
         conn.close()
 
@@ -101,7 +102,7 @@ def upload_meeting():
             # Update status to error
             conn = get_db()
             c = conn.cursor()
-            c.execute('UPDATE meetings SET status = ? WHERE id = ?', ('error', meeting_id))
+            c.execute('UPDATE meetings SET status = %s WHERE id = %s', ('error', meeting_id))
             conn.commit()
             conn.close()
             return jsonify({'error': str(e)}), 500
@@ -136,7 +137,7 @@ def process_meeting_audio(audio_path, meeting_id, title):
         print(f"Transcription error: {e}")
         conn = get_db()
         c = conn.cursor()
-        c.execute('UPDATE meetings SET status = ?, transcript = ? WHERE id = ?',
+        c.execute('UPDATE meetings SET status = %s, transcript = %s WHERE id = %s',
                   ('error', f'Transcription failed: {str(e)}', meeting_id))
         conn.commit()
         conn.close()
@@ -204,8 +205,8 @@ DECISIONS:
     c = conn.cursor()
     c.execute('''
         UPDATE meetings
-        SET transcript = ?, summary = ?, key_points = ?, action_items = ?, decisions = ?, status = 'completed'
-        WHERE id = ?
+        SET transcript = %s, summary = %s, key_points = %s, action_items = %s, decisions = %s, status = 'completed'
+        WHERE id = %s
     ''', (transcript, summary, json.dumps(key_points), json.dumps(action_items),
           json.dumps(decisions), meeting_id))
     conn.commit()
@@ -255,7 +256,7 @@ def view_meeting(meeting_id):
     """View individual meeting details"""
     conn = get_db()
     c = conn.cursor()
-    c.execute('SELECT * FROM meetings WHERE id = ?', (meeting_id,))
+    c.execute('SELECT * FROM meetings WHERE id = %s', (meeting_id,))
     meeting = c.fetchone()
     conn.close()
 
@@ -283,21 +284,21 @@ def edit_meeting(meeting_id):
     values = []
 
     if 'title' in data:
-        fields.append('title = ?')
+        fields.append('title = %s')
         values.append(data['title'])
     if 'summary' in data:
-        fields.append('summary = ?')
+        fields.append('summary = %s')
         values.append(data['summary'])
     if 'attendees' in data:
-        fields.append('attendees = ?')
+        fields.append('attendees = %s')
         values.append(data['attendees'])
     if 'tags' in data:
-        fields.append('tags = ?')
+        fields.append('tags = %s')
         values.append(data['tags'])
 
     if fields:
         values.append(meeting_id)
-        query = f"UPDATE meetings SET {', '.join(fields)} WHERE id = ?"
+        query = f"UPDATE meetings SET {', '.join(fields)} WHERE id = %s"
         c.execute(query, values)
         conn.commit()
 
@@ -311,7 +312,7 @@ def delete_meeting(meeting_id):
     c = conn.cursor()
 
     # Get audio file path
-    c.execute('SELECT audio_file FROM meetings WHERE id = ?', (meeting_id,))
+    c.execute('SELECT audio_file FROM meetings WHERE id = %s', (meeting_id,))
     result = c.fetchone()
 
     if result and result['audio_file']:
@@ -321,7 +322,7 @@ def delete_meeting(meeting_id):
             os.remove(audio_path)
 
     # Delete database entry
-    c.execute('DELETE FROM meetings WHERE id = ?', (meeting_id,))
+    c.execute('DELETE FROM meetings WHERE id = %s', (meeting_id,))
     conn.commit()
     conn.close()
 
@@ -337,7 +338,7 @@ def search_meetings():
     c.execute('''
         SELECT id, title, date, summary
         FROM meetings
-        WHERE transcript LIKE ? OR summary LIKE ? OR title LIKE ?
+        WHERE transcript LIKE %s OR summary LIKE %s OR title LIKE %s
         ORDER BY date DESC
         LIMIT 20
     ''', (f'%{query}%', f'%{query}%', f'%{query}%'))
@@ -375,7 +376,7 @@ def download_transcript(meeting_id):
     """Download meeting transcript as markdown"""
     conn = get_db()
     c = conn.cursor()
-    c.execute('SELECT * FROM meetings WHERE id = ?', (meeting_id,))
+    c.execute('SELECT * FROM meetings WHERE id = %s', (meeting_id,))
     meeting = c.fetchone()
     conn.close()
 
@@ -449,9 +450,10 @@ def start_live_session():
     c = conn.cursor()
     c.execute('''
         INSERT INTO meetings (title, status)
-        VALUES (?, 'recording')
+        VALUES (%s, 'recording')
+        RETURNING id
     ''', (title,))
-    meeting_id = c.lastrowid
+    meeting_id = c.fetchone()[0]
     conn.commit()
     conn.close()
 
@@ -514,7 +516,7 @@ def receive_live_chunk():
 
                 conn = get_db()
                 c = conn.cursor()
-                c.execute('UPDATE meetings SET transcript = ? WHERE id = ?',
+                c.execute('UPDATE meetings SET transcript = %s WHERE id = %s',
                           (full_transcript, meeting_id))
                 conn.commit()
                 conn.close()
@@ -604,8 +606,8 @@ DECISIONS:
     c = conn.cursor()
     c.execute('''
         UPDATE meetings
-        SET transcript = ?, summary = ?, key_points = ?, action_items = ?, decisions = ?, status = 'completed'
-        WHERE id = ?
+        SET transcript = %s, summary = %s, key_points = %s, action_items = %s, decisions = %s, status = 'completed'
+        WHERE id = %s
     ''', (full_transcript, summary, json.dumps(key_points), json.dumps(action_items),
           json.dumps(decisions), meeting_id))
     conn.commit()

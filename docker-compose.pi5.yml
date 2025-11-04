@@ -1,5 +1,8 @@
 version: '3.8'
 
+# Optimized for Raspberry Pi 5 / 8GB RAM systems
+# This configuration balances performance and memory usage
+
 services:
   # Whisper API for transcription
   whisper:
@@ -8,7 +11,7 @@ services:
     ports:
       - "9000:9000"
     environment:
-      - ASR_MODEL=${WHISPER_MODEL:-small}  # small is optimized for 8GB RAM
+      - ASR_MODEL=small  # Uses ~2GB RAM, good quality
       - ASR_ENGINE=openai_whisper
     volumes:
       - whisper-cache:/root/.cache
@@ -16,7 +19,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 3G
+          memory: 3G  # Limit to prevent OOM
         reservations:
           memory: 2G
     healthcheck:
@@ -37,7 +40,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 4G
+          memory: 4G  # Limit to prevent OOM
         reservations:
           memory: 2G
     healthcheck:
@@ -46,29 +49,6 @@ services:
       timeout: 10s
       retries: 3
 
-  # PostgreSQL database
-  postgres:
-    image: postgres:16-alpine
-    container_name: meeting-postgres
-    environment:
-      - POSTGRES_DB=${POSTGRES_DB:-meetings}
-      - POSTGRES_USER=${POSTGRES_USER:-meeting_user}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Please set POSTGRES_PASSWORD in .env file}
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-        reservations:
-          memory: 256M
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-meeting_user} -d ${POSTGRES_DB:-meetings}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   # Flask web application
   web:
     build: .
@@ -76,16 +56,14 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - FLASK_ENV=${FLASK_ENV:-production}
+      - FLASK_ENV=production
       - PYTHONUNBUFFERED=1
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-meeting_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-meetings}
-      - SECRET_KEY=${SECRET_KEY:-please_change_this_secret_key}
     volumes:
       - ./uploads:/app/uploads
+      - ./data:/app/data
     depends_on:
       - whisper
       - ollama
-      - postgres
     restart: unless-stopped
     deploy:
       resources:
@@ -103,4 +81,3 @@ services:
 volumes:
   whisper-cache:
   ollama-data:
-  postgres-data:
