@@ -16,6 +16,9 @@ app.config['DATABASE'] = '/app/data/meetings.db'
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs('/app/data', exist_ok=True)
 
+# Store active live recording sessions
+live_sessions = {}
+
 def get_db():
     """Get database connection"""
     conn = sqlite3.connect(app.config['DATABASE'])
@@ -430,6 +433,204 @@ def format_action_items(items):
     if not items:
         return "- [ ] No action items"
     return "\n".join([f"- [ ] {item}" for item in items])
+
+@app.route('/api/live/start', methods=['POST'])
+def start_live_session():
+    """Start a new live recording session"""
+    data = request.json
+    title = data.get('title', 'Live Meeting')
+    timestamp = data.get('timestamp', datetime.datetime.now().isoformat())
+
+    # Generate session ID
+    session_id = f"live_{int(time.time())}_{os.urandom(4).hex()}"
+
+    # Create meeting entry in database
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('''
+        INSERT INTO meetings (title, status)
+        VALUES (?, 'recording')
+    ''', (title,))
+    meeting_id = c.lastrowid
+    conn.commit()
+    conn.close()
+
+    # Store session info
+    live_sessions[session_id] = {
+        'meeting_id': meeting_id,
+        'title': title,
+        'start_time': time.time(),
+        'chunks': [],
+        'transcript_parts': []
+    }
+
+    return jsonify({
+        'success': True,
+        'session_id': session_id,
+        'meeting_id': meeting_id
+    })
+
+@app.route('/api/live/chunk', methods=['POST'])
+def receive_live_chunk():
+    """Receive and process audio chunk from live session"""
+    session_id = request.form.get('session_id')
+
+    if not session_id or session_id not in live_sessions:
+        return jsonify({'error': 'Invalid session'}), 400
+
+    # Get audio chunk
+    if 'audio' not in request.files:
+        return jsonify({'error': 'No audio data'}), 400
+
+    audio_file = request.files['audio']
+
+    # Save chunk temporarily
+    chunk_filename = f"chunk_{session_id}_{len(live_sessions[session_id]['chunks'])}.wav"
+    chunk_path = os.path.join(app.config['UPLOAD_FOLDER'], chunk_filename)
+    audio_file.save(chunk_path)
+
+    # Store chunk reference
+    live_sessions[session_id]['chunks'].append(chunk_path)
+
+    # Transcribe chunk with Whisper
+    try:
+        with open(chunk_path, 'rb') as f:
+            response = requests.post(
+                'http://whisper:9000/asr?task=transcribe&language=en&output=json',
+                files={'audio_file': f},
+                timeout=60
+            )
+
+        if response.status_code == 200:
+            transcript_data = response.json()
+            text = transcript_data.get('text', '').strip()
+
+            if text:
+                live_sessions[session_id]['transcript_parts'].append(text)
+
+                # Update database with current transcript
+                meeting_id = live_sessions[session_id]['meeting_id']
+                full_transcript = ' '.join(live_sessions[session_id]['transcript_parts'])
+
+                conn = get_db()
+                c = conn.cursor()
+                c.execute('UPDATE meetings SET transcript = ? WHERE id = ?',
+                          (full_transcript, meeting_id))
+                conn.commit()
+                conn.close()
+
+                return jsonify({'success': True, 'text': text})
+
+        return jsonify({'success': True, 'text': ''})
+
+    except Exception as e:
+        print(f"Error transcribing chunk: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/live/stop', methods=['POST'])
+def stop_live_session():
+    """Stop live recording session and finalize"""
+    data = request.json
+    session_id = data.get('session_id')
+
+    if not session_id or session_id not in live_sessions:
+        return jsonify({'error': 'Invalid session'}), 400
+
+    session = live_sessions[session_id]
+    meeting_id = session['meeting_id']
+
+    # Combine all transcript parts
+    full_transcript = ' '.join(session['transcript_parts'])
+
+    # Run AI analysis on full transcript
+    try:
+        summary_prompt = f"""Analyze this meeting transcript and provide a structured response.
+
+Transcript:
+{full_transcript}
+
+Please provide:
+1. A brief summary (2-3 paragraphs)
+2. Key discussion points (as a list)
+3. Action items with assignees if mentioned (as a list)
+4. Important decisions made (as a list)
+
+Format your response as follows:
+
+SUMMARY:
+[Your summary here]
+
+KEY POINTS:
+- Point 1
+- Point 2
+
+ACTION ITEMS:
+- Action 1
+- Action 2
+
+DECISIONS:
+- Decision 1
+- Decision 2
+"""
+
+        ollama_response = requests.post(
+            'http://ollama:11434/api/generate',
+            json={
+                'model': 'llama2',
+                'prompt': summary_prompt,
+                'stream': False
+            },
+            timeout=300
+        )
+
+        if ollama_response.status_code == 200:
+            analysis_text = ollama_response.json().get('response', '')
+            summary, key_points, action_items, decisions = parse_analysis(analysis_text)
+        else:
+            summary = "Analysis unavailable"
+            key_points = []
+            action_items = []
+            decisions = []
+
+    except Exception as e:
+        print(f"Analysis error: {e}")
+        summary = "Analysis failed"
+        key_points = []
+        action_items = []
+        decisions = []
+
+    # Update database with final results
+    conn = get_db()
+    c = conn.cursor()
+    c.execute('''
+        UPDATE meetings
+        SET transcript = ?, summary = ?, key_points = ?, action_items = ?, decisions = ?, status = 'completed'
+        WHERE id = ?
+    ''', (full_transcript, summary, json.dumps(key_points), json.dumps(action_items),
+          json.dumps(decisions), meeting_id))
+    conn.commit()
+    conn.close()
+
+    # Clean up chunk files
+    for chunk_path in session['chunks']:
+        try:
+            if os.path.exists(chunk_path):
+                os.remove(chunk_path)
+        except Exception as e:
+            print(f"Error deleting chunk: {e}")
+
+    # Remove session from memory
+    del live_sessions[session_id]
+
+    return jsonify({
+        'success': True,
+        'meeting_id': meeting_id
+    })
+
+@app.route('/live')
+def live_recording_page():
+    """Live recording interface"""
+    return render_template('live.html')
 
 @app.route('/health')
 def health_check():
