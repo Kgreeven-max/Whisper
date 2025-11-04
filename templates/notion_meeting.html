@@ -1,0 +1,275 @@
+{% extends "notion_base.html" %}
+
+{% block title %}{{ meeting.title }} - Meeting Transcriber{% endblock %}
+
+{% block breadcrumb %}
+<a href="/" style="color: var(--notion-gray); text-decoration: none;">All Meetings</a>
+<span style="margin: 0 8px; color: var(--notion-gray);">/</span>
+<span>{{ meeting.title }}</span>
+{% endblock %}
+
+{% block topbar_actions %}
+<button onclick="showRegenerateModal()" class="topbar-btn">🔄 Regenerate</button>
+<a href="/download/{{ meeting.id }}" class="topbar-btn">📥 Download</a>
+<button onclick="deleteMeeting()" class="topbar-btn" style="color: var(--notion-red);">🗑️ Delete</button>
+{% endblock %}
+
+{% block content %}
+<div class="fade-in">
+    <!-- Meeting Title (Inline Editable) -->
+    <h1 class="notion-page-title"
+        contenteditable="true"
+        id="meeting-title"
+        onblur="saveTitle()"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}">{{ meeting.title }}</h1>
+
+    <!-- Meta Info -->
+    <div style="display: flex; gap: 20px; margin-bottom: 32px; font-size: 14px; color: var(--notion-gray);">
+        <span>📅 {{ meeting.date.strftime('%B %d, %Y at %I:%M %p') if meeting.date else 'No date' }}</span>
+        {% if meeting.attendees %}
+        <span>👥 {{ meeting.attendees }}</span>
+        {% endif %}
+        {% if meeting.meeting_type and meeting.meeting_type != 'general' %}
+        <span>📁 {{ meeting.meeting_type|replace('-', ' ')|title }}</span>
+        {% endif %}
+        <span class="card-badge
+            {% if meeting.status == 'completed' %}badge-completed
+            {% elif 'queued' in meeting.status %}badge-queued
+            {% elif meeting.status == 'processing' %}badge-processing
+            {% else %}badge-error
+            {% endif %}">
+            {{ meeting.status|title }}
+        </span>
+    </div>
+
+    {% if meeting.status == 'processing' or 'queued' in meeting.status %}
+    <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 3px; margin-bottom: 32px;">
+        <strong>⏳ Processing in progress</strong>
+        <p style="margin-top: 8px; color: var(--notion-gray);">Your meeting is being transcribed and analyzed. This page will refresh automatically.</p>
+    </div>
+    {% endif %}
+
+    <!-- Notes Section (Prominent) -->
+    <div style="background: var(--notion-sidebar-bg); border: 1px solid var(--notion-border); border-radius: 3px; padding: 16px; margin-bottom: 32px;">
+        <div style="font-size: 12px; font-weight: 600; color: var(--notion-gray); margin-bottom: 8px; text-transform: uppercase;">Your Notes</div>
+        <div id="meeting-notes"
+             contenteditable="true"
+             onblur="saveNotes()"
+             style="font-size: 14px; line-height: 1.6; min-height: 60px; outline: none; padding: 8px; border-radius: 3px; transition: background 0.1s ease;"
+             onfocus="this.style.background='white'"
+             onblur="if(!this.textContent.trim()){this.style.background='var(--notion-sidebar-bg)'}else{this.style.background='var(--notion-sidebar-bg)'}">{{ meeting.notes if meeting.notes else '' }}</div>
+        <div style="font-size: 12px; color: var(--notion-gray); margin-top: 8px;">💡 Click to add your own notes and thoughts about this meeting</div>
+    </div>
+
+    {% if meeting.status == 'completed' %}
+    <!-- Summary -->
+    <div class="notion-section" style="margin-bottom: 24px;">
+        <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+            <span>📝</span> Summary
+        </h2>
+        <div style="line-height: 1.8; color: var(--notion-text);">
+            {{ meeting.summary if meeting.summary else 'No summary available' }}
+        </div>
+    </div>
+
+    <!-- Key Points -->
+    <div class="notion-section" style="margin-bottom: 24px;">
+        <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+            <span>💡</span> Key Discussion Points
+        </h2>
+        {% if meeting.key_points %}
+            {% for point in meeting.key_points %}
+            <div style="display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--notion-border);">
+                <span style="color: var(--notion-gray);">•</span>
+                <span style="flex: 1;">{{ point }}</span>
+            </div>
+            {% endfor %}
+        {% else %}
+        <div style="color: var(--notion-gray); font-style: italic;">No key points extracted</div>
+        {% endif %}
+    </div>
+
+    <!-- Action Items -->
+    <div class="notion-section" style="margin-bottom: 24px;">
+        <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+            <span>✅</span> Action Items
+        </h2>
+        {% if meeting.action_items %}
+            {% for item in meeting.action_items %}
+            <div style="display: flex; gap: 12px; padding: 8px; background: var(--notion-sidebar-bg); border-radius: 3px; margin-bottom: 8px;">
+                <input type="checkbox" style="margin-top: 4px; cursor: pointer;" onchange="toggleActionItem(this, '{{ meeting.id }}', '{{ item[:20] }}')">
+                <span style="flex: 1;">{{ item }}</span>
+            </div>
+            {% endfor %}
+        {% else %}
+        <div style="color: var(--notion-gray); font-style: italic;">No action items identified</div>
+        {% endif %}
+    </div>
+
+    <!-- Decisions -->
+    <div class="notion-section" style="margin-bottom: 24px;">
+        <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+            <span>🎯</span> Decisions
+        </h2>
+        {% if meeting.decisions %}
+            {% for decision in meeting.decisions %}
+            <div style="display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--notion-border);">
+                <span style="color: var(--notion-blue);">→</span>
+                <span style="flex: 1;">{{ decision }}</span>
+            </div>
+            {% endfor %}
+        {% else %}
+        <div style="color: var(--notion-gray); font-style: italic;">No decisions recorded</div>
+        {% endif %}
+    </div>
+
+    <!-- Full Transcript (Collapsible) -->
+    <details style="border: 1px solid var(--notion-border); border-radius: 3px; padding: 16px; margin-bottom: 32px;">
+        <summary style="font-size: 16px; font-weight: 600; cursor: pointer; user-select: none;">
+            📄 Full Transcript
+        </summary>
+        <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--notion-border); line-height: 1.8; white-space: pre-wrap; font-family: 'Georgia', serif; color: var(--notion-text);">
+            {{ meeting.transcript if meeting.transcript else 'No transcript available' }}
+        </div>
+    </details>
+    {% endif %}
+</div>
+
+<!-- Regenerate Modal (Same as dashboard) -->
+<div id="regenerate-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.3); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: white; border-radius: 6px; padding: 24px; width: 90%; max-width: 400px; box-shadow: 0 8px 24px rgba(0,0,0,0.15);">
+        <h3 style="margin-bottom: 16px; font-size: 18px; font-weight: 600;">Regenerate Meeting Analysis</h3>
+        <p style="margin-bottom: 16px; font-size: 14px; color: var(--notion-gray);">Choose a new meeting type to re-analyze this meeting with AI:</p>
+        <select id="regenerate-type" style="width: 100%; padding: 8px; border: 1px solid var(--notion-border); border-radius: 3px; font-size: 14px; margin-bottom: 16px; font-family: inherit;">
+            <option value="general" {% if meeting.meeting_type == 'general' %}selected{% endif %}>📝 General</option>
+            <option value="standup" {% if meeting.meeting_type == 'standup' %}selected{% endif %}>📊 Daily Standup</option>
+            <option value="retrospective" {% if meeting.meeting_type == 'retrospective' %}selected{% endif %}>🔄 Retrospective</option>
+            <option value="planning" {% if meeting.meeting_type == 'planning' %}selected{% endif %}>📅 Planning Meeting</option>
+            <option value="one-on-one" {% if meeting.meeting_type == 'one-on-one' %}selected{% endif %}>👥 One-on-One</option>
+            <option value="team-sync" {% if meeting.meeting_type == 'team-sync' %}selected{% endif %}>🔄 Team Sync</option>
+            <option value="brainstorming" {% if meeting.meeting_type == 'brainstorming' %}selected{% endif %}>💡 Brainstorming</option>
+            <option value="review" {% if meeting.meeting_type == 'review' %}selected{% endif %}>✅ Review/Demo</option>
+            <option value="client-call" {% if meeting.meeting_type == 'client-call' %}selected{% endif %}>📞 Client Call</option>
+            <option value="interview" {% if meeting.meeting_type == 'interview' %}selected{% endif %}>🎤 Interview</option>
+            <option value="training" {% if meeting.meeting_type == 'training' %}selected{% endif %}>📚 Training</option>
+        </select>
+        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+            <button onclick="closeRegenerateModal()" class="notion-btn notion-btn-secondary">Cancel</button>
+            <button onclick="regenerateMeeting()" class="notion-btn notion-btn-primary">Regenerate</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const meetingId = {{ meeting.id }};
+
+// Inline editing
+async function saveTitle() {
+    const newTitle = document.getElementById('meeting-title').textContent.trim();
+    if (!newTitle) {
+        document.getElementById('meeting-title').textContent = 'Untitled';
+        return;
+    }
+    try {
+        await fetch(`/api/meeting/${meetingId}/title`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: newTitle })
+        });
+    } catch (error) {
+        console.error('Error saving title:', error);
+    }
+}
+
+async function saveNotes() {
+    const newNotes = document.getElementById('meeting-notes').textContent.trim();
+    try {
+        await fetch(`/api/meeting/${meetingId}/notes`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ notes: newNotes })
+        });
+    } catch (error) {
+        console.error('Error saving notes:', error);
+    }
+}
+
+// AI Regeneration
+function showRegenerateModal() {
+    document.getElementById('regenerate-modal').style.display = 'flex';
+}
+
+function closeRegenerateModal() {
+    document.getElementById('regenerate-modal').style.display = 'none';
+}
+
+async function regenerateMeeting() {
+    const newType = document.getElementById('regenerate-type').value;
+    try {
+        const response = await fetch(`/api/meeting/${meetingId}/regenerate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ meeting_type: newType })
+        });
+        if (response.ok) {
+            closeRegenerateModal();
+            alert('🔄 Regenerating... Page will refresh in 3 seconds.');
+            setTimeout(() => location.reload(), 3000);
+        } else {
+            alert('Failed to regenerate');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Failed to regenerate');
+    }
+}
+
+// Delete
+async function deleteMeeting() {
+    if (!confirm('Delete this meeting? This cannot be undone.')) return;
+    try {
+        const response = await fetch(`/api/meeting/${meetingId}/delete`, { method: 'DELETE' });
+        if (response.ok) {
+            window.location.href = '/';
+        } else {
+            alert('Failed to delete');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Failed to delete');
+    }
+}
+
+// Action item state
+function toggleActionItem(checkbox, meetingId, itemKey) {
+    const key = `action-${meetingId}-${itemKey}`;
+    if (checkbox.checked) {
+        localStorage.setItem(key, 'checked');
+    } else {
+        localStorage.removeItem(key);
+    }
+}
+
+// Load saved action item states
+document.querySelectorAll('[type="checkbox"]').forEach((checkbox, index) => {
+    const item = checkbox.nextElementSibling;
+    if (item) {
+        const itemKey = item.textContent.substring(0, 20);
+        const key = `action-${meetingId}-${itemKey}`;
+        if (localStorage.getItem(key) === 'checked') {
+            checkbox.checked = true;
+        }
+    }
+});
+
+// Auto-refresh if processing
+{% if meeting.status == 'processing' or 'queued' in meeting.status %}
+setTimeout(() => location.reload(), 5000);
+{% endif %}
+
+// Close modal on click outside
+document.getElementById('regenerate-modal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeRegenerateModal();
+});
+</script>
+{% endblock %}

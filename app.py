@@ -1053,7 +1053,7 @@ def view_meeting(meeting_id):
         meeting_data['action_items'] = json.loads(meeting['action_items'] or '[]')
         meeting_data['decisions'] = json.loads(meeting['decisions'] or '[]')
 
-        return render_template('meeting.html', meeting=meeting_data, user=request.current_user)
+        return render_template('notion_meeting.html', meeting=meeting_data, user=request.current_user)
     finally:
         conn.close()
 
