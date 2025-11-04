@@ -5,6 +5,7 @@ import json
 import datetime
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 from werkzeug.utils import secure_filename
 import time
 
@@ -19,11 +20,40 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 # Store active live recording sessions
 live_sessions = {}
 
+# Create database connection pool (prevents connection exhaustion)
+db_pool = None
+
+def init_db_pool():
+    """Initialize database connection pool"""
+    global db_pool
+    if db_pool is None:
+        db_pool = psycopg2.pool.SimpleConnectionPool(
+            minconn=1,
+            maxconn=20,  # Max 20 connections (PostgreSQL default is 100)
+            dsn=app.config['DATABASE_URL']
+        )
+
 def get_db():
-    """Get database connection"""
-    conn = psycopg2.connect(app.config['DATABASE_URL'])
-    conn.cursor_factory = psycopg2.extras.DictCursor
-    return conn
+    """Get database connection from pool
+    Note: conn.close() will return connection to pool, not actually close it
+    """
+    global db_pool
+    if db_pool is None:
+        init_db_pool()
+
+    # Get connection from pool
+    raw_conn = db_pool.getconn()
+
+    # Wrap close() to return to pool instead of closing
+    original_close = raw_conn.close
+    def pool_close():
+        global db_pool
+        if db_pool and raw_conn:
+            db_pool.putconn(raw_conn)
+    raw_conn.close = pool_close
+
+    raw_conn.cursor_factory = psycopg2.extras.DictCursor
+    return raw_conn
 
 def init_db():
     """Initialize database with retry logic"""
@@ -192,7 +222,7 @@ DECISIONS:
         ollama_response = requests.post(
             'http://ollama:11434/api/generate',
             json={
-                'model': 'llama2',
+                'model': os.getenv('OLLAMA_MODEL', 'phi'),
                 'prompt': summary_prompt,
                 'stream': False
             },
@@ -371,10 +401,10 @@ def get_stats():
     c.execute('SELECT COUNT(*) as total FROM meetings')
     total = c.fetchone()['total']
 
-    c.execute('SELECT COUNT(*) as completed FROM meetings WHERE status = "completed"')
+    c.execute("SELECT COUNT(*) as completed FROM meetings WHERE status = 'completed'")
     completed = c.fetchone()['completed']
 
-    c.execute('SELECT COUNT(*) as processing FROM meetings WHERE status = "processing"')
+    c.execute("SELECT COUNT(*) as processing FROM meetings WHERE status = 'processing'")
     processing = c.fetchone()['processing']
 
     conn.close()
@@ -429,13 +459,16 @@ def download_transcript(meeting_id):
 *Meeting ID: {meeting_id}*
 """
 
-    # Save to temp file and send
+    # Save to temp file and send (using uploads folder, not /tmp which may not exist in Docker)
+    temp_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'temp')
+    os.makedirs(temp_dir, exist_ok=True)
+
     filename = f"{meeting['title'].replace(' ', '_')}_{meeting_id}.md"
-    temp_path = os.path.join('/tmp', filename)
+    temp_path = os.path.join(temp_dir, filename)
     with open(temp_path, 'w') as f:
         f.write(content)
 
-    return send_from_directory('/tmp', filename, as_attachment=True)
+    return send_from_directory(temp_dir, filename, as_attachment=True)
 
 def format_list(items):
     """Format list items as markdown"""
@@ -592,7 +625,7 @@ DECISIONS:
         ollama_response = requests.post(
             'http://ollama:11434/api/generate',
             json={
-                'model': 'llama2',
+                'model': os.getenv('OLLAMA_MODEL', 'phi'),
                 'prompt': summary_prompt,
                 'stream': False
             },
