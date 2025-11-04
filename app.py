@@ -389,6 +389,11 @@ def register_page():
     """Serve registration page"""
     return render_template('register.html')
 
+@app.route('/auth/forgot-password', methods=['GET'])
+def forgot_password_page():
+    """Serve forgot password page"""
+    return render_template('forgot-password.html')
+
 @app.route('/auth/register', methods=['POST'])
 def register():
     """Register new user"""

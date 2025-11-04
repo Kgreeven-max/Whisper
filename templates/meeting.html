@@ -140,10 +140,13 @@
     </form>
 </div>
 
-{% if meeting.status == 'processing' %}
+{% if meeting.status == 'processing' or 'queued' in meeting.status %}
 <div class="processing-notice">
     <h3>⏳ Processing in progress</h3>
     <p class="mt-1">Your meeting is currently being transcribed and analyzed. This page will automatically refresh when processing is complete.</p>
+    {% if 'queued' in meeting.status %}
+    <p class="mt-1"><strong>Queue Status:</strong> {{ meeting.status|title }}</p>
+    {% endif %}
     <div class="spinner"></div>
 </div>
 {% endif %}
@@ -162,12 +165,15 @@
         {% if meeting.attendees %}
         <span>👥 {{ meeting.attendees }}</span>
         {% endif %}
+        {% if meeting.meeting_type and meeting.meeting_type != 'general' %}
+        <span>📁 {{ meeting.meeting_type|replace('-', ' ')|title }}</span>
+        {% endif %}
         {% if meeting.status %}
         <span>
             {% if meeting.status == 'completed' %}
             ✅ Completed
-            {% elif meeting.status == 'processing' %}
-            ⏳ Processing
+            {% elif meeting.status == 'processing' or 'queued' in meeting.status %}
+            ⏳ {{ meeting.status|title }}
             {% else %}
             ❌ Error
             {% endif %}
@@ -257,11 +263,11 @@
 {% endif %}
 
 <script>
-    // Auto-refresh if processing
-    {% if meeting.status == 'processing' %}
+    // Auto-refresh if processing or queued
+    {% if meeting.status == 'processing' or 'queued' in meeting.status %}
     setTimeout(() => {
         location.reload();
-    }, 10000); // Refresh every 10 seconds
+    }, 5000); // Refresh every 5 seconds
     {% endif %}
 
     // Save action item state
