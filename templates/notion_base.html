@@ -800,6 +800,9 @@
                 </div>
                 <div class="topbar-right">
                     {% block topbar_actions %}{% endblock %}
+                    <button onclick="showKeyboardShortcuts()" class="topbar-btn" title="Keyboard shortcuts (Cmd+/)">
+                        ⌨️
+                    </button>
                 </div>
             </div>
 
@@ -951,6 +954,101 @@
 
         // Apply saved theme on page load
         setTheme(getTheme());
+
+        // ============================================================
+        // Keyboard Shortcuts (Notion-style)
+        // ============================================================
+        document.addEventListener('keydown', (e) => {
+            const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+            const modKey = isMac ? e.metaKey : e.ctrlKey;
+
+            // Cmd/Ctrl + K: Quick search (focus search input if exists)
+            if (modKey && e.key === 'k') {
+                e.preventDefault();
+                const searchInput = document.getElementById('search-input');
+                if (searchInput) {
+                    searchInput.focus();
+                    searchInput.select();
+                }
+            }
+
+            // Cmd/Ctrl + N: New meeting
+            if (modKey && e.key === 'n') {
+                e.preventDefault();
+                window.location.href = '/upload';
+            }
+
+            // Cmd/Ctrl + \: Toggle sidebar
+            if (modKey && e.key === '\\') {
+                e.preventDefault();
+                toggleSidebar();
+            }
+
+            // Cmd/Ctrl + Shift + D: Toggle dark mode
+            if (modKey && e.shiftKey && e.key === 'D') {
+                e.preventDefault();
+                toggleTheme();
+            }
+
+            // Escape: Close modals or clear search
+            if (e.key === 'Escape') {
+                // Close any open modals
+                const modals = document.querySelectorAll('[id$="-modal"]');
+                modals.forEach(modal => {
+                    if (modal.style.display === 'flex') {
+                        modal.style.display = 'none';
+                    }
+                });
+
+                // Clear search input if focused
+                const searchInput = document.getElementById('search-input');
+                if (searchInput && document.activeElement === searchInput) {
+                    searchInput.value = '';
+                    searchInput.blur();
+                }
+            }
+
+            // Cmd/Ctrl + /: Show keyboard shortcuts help
+            if (modKey && e.key === '/') {
+                e.preventDefault();
+                showKeyboardShortcuts();
+            }
+        });
+
+        function showKeyboardShortcuts() {
+            const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+            const mod = isMac ? '⌘' : 'Ctrl';
+
+            const shortcuts = [
+                { keys: `${mod} K`, description: 'Quick search' },
+                { keys: `${mod} N`, description: 'New meeting' },
+                { keys: `${mod} \\`, description: 'Toggle sidebar' },
+                { keys: `${mod} Shift D`, description: 'Toggle dark mode' },
+                { keys: `${mod} /`, description: 'Show shortcuts' },
+                { keys: 'Escape', description: 'Close modal / Clear search' }
+            ];
+
+            let html = '<div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--notion-bg); border: 1px solid var(--notion-border); border-radius: 6px; padding: 24px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); z-index: 10000; min-width: 400px;">';
+            html += '<h3 style="margin-bottom: 16px; font-size: 18px; font-weight: 600; color: var(--notion-text);">Keyboard Shortcuts</h3>';
+            html += '<div style="display: flex; flex-direction: column; gap: 8px;">';
+
+            shortcuts.forEach(s => {
+                html += `<div style="display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--notion-border);">`;
+                html += `<span style="color: var(--notion-text);">${s.description}</span>`;
+                html += `<kbd style="background: var(--notion-hover); padding: 2px 8px; border-radius: 3px; font-family: monospace; font-size: 12px; color: var(--notion-text); border: 1px solid var(--notion-border);">${s.keys}</kbd>`;
+                html += `</div>`;
+            });
+
+            html += '</div>';
+            html += '<button onclick="this.parentElement.remove()" style="margin-top: 16px; width: 100%; padding: 8px; background: var(--notion-blue); color: white; border: none; border-radius: 3px; cursor: pointer; font-family: inherit; font-size: 14px;">Got it!</button>';
+            html += '</div>';
+
+            const overlay = document.createElement('div');
+            overlay.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.3); z-index: 9999;';
+            overlay.onclick = () => overlay.remove();
+            overlay.innerHTML = html;
+            document.body.appendChild(overlay);
+        }
 
         // Set user initials in avatar
         const username = '{{ user.username if user else "U" }}';
