@@ -6,7 +6,7 @@ services:
     image: onerahmet/openai-whisper-asr-webservice:latest
     container_name: meeting-whisper
     ports:
-      - "9001:9000"
+      - "19000:9000"
     environment:
       - ASR_MODEL=${WHISPER_MODEL:-small}  # small is optimized for 8GB RAM
       - ASR_ENGINE=openai_whisper
