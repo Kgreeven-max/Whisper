@@ -228,7 +228,9 @@ def init_db():
                     duration INTEGER,
                     tags TEXT,
                     status TEXT DEFAULT 'processing',
-                    meeting_type TEXT DEFAULT 'general'
+                    meeting_type TEXT DEFAULT 'general',
+                    notes TEXT,
+                    display_order INTEGER DEFAULT 0
                 )
             ''')
 
@@ -248,11 +250,19 @@ def init_db():
                 )
             ''')
 
-            # Migration: Add meeting_type column if it doesn't exist
+            # Migrations: Add new columns if they don't exist
             try:
                 c.execute('''
                     ALTER TABLE meetings
                     ADD COLUMN IF NOT EXISTS meeting_type TEXT DEFAULT 'general'
+                ''')
+                c.execute('''
+                    ALTER TABLE meetings
+                    ADD COLUMN IF NOT EXISTS notes TEXT
+                ''')
+                c.execute('''
+                    ALTER TABLE meetings
+                    ADD COLUMN IF NOT EXISTS display_order INTEGER DEFAULT 0
                 ''')
             except Exception as e:
                 print(f"Migration note: {e}")
@@ -1014,6 +1024,187 @@ def delete_meeting(meeting_id):
         conn.commit()
 
         return redirect(url_for('index'))
+    finally:
+        conn.close()
+
+@app.route('/api/meeting/<int:meeting_id>/title', methods=['PUT'])
+@jwt_required
+def update_meeting_title(meeting_id):
+    """Update meeting title (inline editing)"""
+    new_title = request.json.get('title', '').strip()
+
+    if not new_title:
+        return jsonify({'error': 'Title cannot be empty'}), 400
+
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute('''
+            UPDATE meetings SET title = %s
+            WHERE id = %s AND user_id = %s
+        ''', (new_title, meeting_id, request.current_user['user_id']))
+
+        if c.rowcount == 0:
+            return jsonify({'error': 'Meeting not found or access denied'}), 404
+
+        conn.commit()
+        return jsonify({'success': True, 'title': new_title})
+    finally:
+        conn.close()
+
+@app.route('/api/meeting/<int:meeting_id>/notes', methods=['PUT'])
+@jwt_required
+def update_meeting_notes(meeting_id):
+    """Update meeting notes (inline editing)"""
+    new_notes = request.json.get('notes', '')
+
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute('''
+            UPDATE meetings SET notes = %s
+            WHERE id = %s AND user_id = %s
+        ''', (new_notes, meeting_id, request.current_user['user_id']))
+
+        if c.rowcount == 0:
+            return jsonify({'error': 'Meeting not found or access denied'}), 404
+
+        conn.commit()
+        return jsonify({'success': True, 'notes': new_notes})
+    finally:
+        conn.close()
+
+@app.route('/api/meeting/<int:meeting_id>/regenerate', methods=['POST'])
+@jwt_required
+def regenerate_meeting_analysis(meeting_id):
+    """Regenerate meeting analysis with new meeting type"""
+    new_type = request.json.get('meeting_type', 'general')
+
+    valid_types = ['standup', 'retrospective', 'planning', 'one-on-one', 'team-sync',
+                   'brainstorming', 'review', 'client-call', 'interview', 'training', 'general']
+
+    if new_type not in valid_types:
+        return jsonify({'error': 'Invalid meeting type'}), 400
+
+    conn = get_db()
+    try:
+        c = conn.cursor()
+
+        # Get meeting and verify ownership
+        c.execute('''
+            SELECT transcript, audio_file, title
+            FROM meetings
+            WHERE id = %s AND user_id = %s
+        ''', (meeting_id, request.current_user['user_id']))
+
+        meeting = c.fetchone()
+        if not meeting:
+            return jsonify({'error': 'Meeting not found or access denied'}), 404
+
+        if not meeting['transcript']:
+            return jsonify({'error': 'No transcript available for regeneration'}), 400
+
+        # Update meeting type and set status to processing
+        c.execute('''
+            UPDATE meetings
+            SET meeting_type = %s, status = 'processing'
+            WHERE id = %s AND user_id = %s
+        ''', (new_type, meeting_id, request.current_user['user_id']))
+        conn.commit()
+
+        # Re-analyze in background
+        def reanalyze():
+            try:
+                summary_prompt = f"""Analyze this meeting transcript as a {new_type.replace('-', ' ')} meeting.
+
+Transcript:
+{meeting['transcript']}
+
+Please provide:
+1. Meeting type confirmation: {new_type}
+2. A brief summary (2-3 paragraphs)
+3. Key discussion points (as a list)
+4. Action items with assignees if mentioned (as a list)
+5. Important decisions made (as a list)
+
+Format your response as follows:
+
+MEETING TYPE:
+{new_type}
+
+SUMMARY:
+[Your summary here]
+
+KEY POINTS:
+- Point 1
+- Point 2
+
+ACTION ITEMS:
+- Action 1
+- Action 2
+
+DECISIONS:
+- Decision 1
+- Decision 2
+"""
+
+                ollama_response = requests.post(
+                    'http://ollama:11434/api/generate',
+                    json={
+                        'model': os.getenv('OLLAMA_MODEL', 'phi'),
+                        'prompt': summary_prompt,
+                        'stream': False
+                    },
+                    timeout=300
+                )
+
+                if ollama_response.status_code == 200:
+                    analysis_text = ollama_response.json().get('response', '')
+                    meeting_type_detected, summary, key_points, action_items, decisions = parse_analysis(analysis_text)
+
+                    # Use the user-specified type
+                    final_type = new_type
+                else:
+                    summary = "Analysis unavailable"
+                    key_points = []
+                    action_items = []
+                    decisions = []
+                    final_type = new_type
+
+                # Update database
+                conn2 = get_db()
+                try:
+                    c2 = conn2.cursor()
+                    c2.execute('''
+                        UPDATE meetings
+                        SET summary = %s, key_points = %s, action_items = %s, decisions = %s, meeting_type = %s, status = 'completed'
+                        WHERE id = %s
+                    ''', (summary, json.dumps(key_points), json.dumps(action_items),
+                          json.dumps(decisions), final_type, meeting_id))
+                    conn2.commit()
+                finally:
+                    conn2.close()
+
+            except Exception as e:
+                print(f"Regeneration error: {e}")
+                conn2 = get_db()
+                try:
+                    c2 = conn2.cursor()
+                    c2.execute("UPDATE meetings SET status = 'completed' WHERE id = %s", (meeting_id,))
+                    conn2.commit()
+                finally:
+                    conn2.close()
+
+        # Start background thread
+        thread = threading.Thread(target=reanalyze, daemon=True)
+        thread.start()
+
+        return jsonify({
+            'success': True,
+            'message': 'Regenerating analysis with new meeting type...',
+            'meeting_type': new_type
+        })
+
     finally:
         conn.close()
 
