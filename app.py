@@ -13,6 +13,8 @@ import bcrypt
 from functools import wraps
 import threading
 import queue
+import zipfile
+import io
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = '/app/uploads'
@@ -2269,6 +2271,46 @@ def download_client_file(filename):
         return send_from_directory(client_dir, filename, as_attachment=True)
     except FileNotFoundError:
         return jsonify({'error': 'File not found'}), 404
+
+@app.route('/downloads/all')
+def download_all_files():
+    """Download all client files as a zip archive"""
+    client_dir = os.path.join(os.path.dirname(__file__), 'client')
+
+    # Create a zip file in memory
+    memory_file = io.BytesIO()
+
+    with zipfile.ZipFile(memory_file, 'w', zipfile.ZIP_DEFLATED) as zf:
+        # Add all client files
+        client_files = [
+            'audio_capture.py',
+            'requirements.txt',
+            'install_linux.sh',
+            'install_macos.sh',
+            'install_windows.bat',
+            'meeting_monitor.py',
+            'calendar_integration.py'
+        ]
+
+        for filename in client_files:
+            file_path = os.path.join(client_dir, filename)
+            if os.path.exists(file_path):
+                zf.write(file_path, filename)
+
+    # Seek to the beginning of the BytesIO object
+    memory_file.seek(0)
+
+    # Send the zip file
+    return send_from_directory(
+        directory=os.path.dirname(__file__),
+        path='',
+        as_attachment=True,
+        download_name='meeting-transcriber-client.zip',
+        mimetype='application/zip'
+    ) if False else (memory_file.getvalue(), 200, {
+        'Content-Type': 'application/zip',
+        'Content-Disposition': 'attachment; filename=meeting-transcriber-client.zip'
+    })
 
 @app.route('/health')
 def health_check():

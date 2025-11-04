@@ -3,7 +3,7 @@
 {% block title %}Table View - Meeting Transcriber{% endblock %}
 
 {% block breadcrumb %}
-<span>📊 Table View</span>
+<span> Table View</span>
 {% endblock %}
 
 {% block topbar_actions %}
@@ -20,15 +20,15 @@
     <!-- View Switcher -->
     <div class="view-switcher">
         <button class="view-btn" data-view="list" onclick="window.location.href='/'">
-            <span>📋</span>
+            <span></span>
             <span>List</span>
         </button>
         <button class="view-btn" data-view="calendar" onclick="window.location.href='/calendar'">
-            <span>📅</span>
+            <span></span>
             <span>Calendar</span>
         </button>
         <button class="view-btn active" data-view="table">
-            <span>📊</span>
+            <span></span>
             <span>Table</span>
         </button>
     </div>
@@ -37,17 +37,17 @@
     <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
         <select id="filter-type" onchange="applyFilters()" style="padding: 6px 12px; border: 1px solid var(--notion-border); border-radius: 3px; font-size: 14px; font-family: inherit; background: white;">
             <option value="">All Types</option>
-            <option value="standup">📊 Daily Standup</option>
-            <option value="retrospective">🔄 Retrospective</option>
-            <option value="planning">📅 Planning</option>
-            <option value="one-on-one">👥 One-on-One</option>
-            <option value="team-sync">🔄 Team Sync</option>
-            <option value="brainstorming">💡 Brainstorming</option>
-            <option value="review">✅ Review</option>
-            <option value="client-call">📞 Client Call</option>
-            <option value="interview">🎤 Interview</option>
-            <option value="training">📚 Training</option>
-            <option value="general">📝 General</option>
+            <option value="standup"> Daily Standup</option>
+            <option value="retrospective"> Retrospective</option>
+            <option value="planning"> Planning</option>
+            <option value="one-on-one"> One-on-One</option>
+            <option value="team-sync"> Team Sync</option>
+            <option value="brainstorming"> Brainstorming</option>
+            <option value="review"> Review</option>
+            <option value="client-call"> Client Call</option>
+            <option value="interview"> Interview</option>
+            <option value="training"> Training</option>
+            <option value="general"> General</option>
         </select>
 
         <select id="filter-status" onchange="applyFilters()" style="padding: 6px 12px; border: 1px solid var(--notion-border); border-radius: 3px; font-size: 14px; font-family: inherit; background: white;">
@@ -86,17 +86,17 @@
                         <td style="padding: 12px 16px;">
                             <div style="display: flex; align-items: center; gap: 8px;">
                                 <span>
-                                    {% if meeting[14] == 'standup' %}📊
-                                    {% elif meeting[14] == 'retrospective' %}🔄
-                                    {% elif meeting[14] == 'planning' %}📅
-                                    {% elif meeting[14] == 'one-on-one' %}👥
-                                    {% elif meeting[14] == 'team-sync' %}🔄
-                                    {% elif meeting[14] == 'brainstorming' %}💡
-                                    {% elif meeting[14] == 'review' %}✅
-                                    {% elif meeting[14] == 'client-call' %}📞
-                                    {% elif meeting[14] == 'interview' %}🎤
-                                    {% elif meeting[14] == 'training' %}📚
-                                    {% else %}📝
+                                    {% if meeting[14] == 'standup' %}
+                                    {% elif meeting[14] == 'retrospective' %}
+                                    {% elif meeting[14] == 'planning' %}
+                                    {% elif meeting[14] == 'one-on-one' %}
+                                    {% elif meeting[14] == 'team-sync' %}
+                                    {% elif meeting[14] == 'brainstorming' %}
+                                    {% elif meeting[14] == 'review' %}
+                                    {% elif meeting[14] == 'client-call' %}
+                                    {% elif meeting[14] == 'interview' %}
+                                    {% elif meeting[14] == 'training' %}
+                                    {% else %}
                                     {% endif %}
                                 </span>
                                 <span style="font-weight: 500;">{{ meeting[2] }}</span>
@@ -133,7 +133,7 @@
                 <tr>
                     <td colspan="6" style="padding: 60px; text-align: center;">
                         <div class="notion-empty">
-                            <div class="notion-empty-icon">🎙️</div>
+                            <div class="notion-empty-icon"></div>
                             <div class="notion-empty-title">No meetings yet</div>
                             <div class="notion-empty-desc">Upload your first meeting recording to get started</div>
                             <a href="/upload" class="notion-btn notion-btn-primary">Upload Meeting</a>
@@ -154,17 +154,17 @@
 <!-- Actions Menu -->
 <div id="actions-menu" style="display: none; position: fixed; background: white; border: 1px solid var(--notion-border); border-radius: 3px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; min-width: 180px;">
     <div onclick="viewMeeting()" style="padding: 8px 12px; cursor: pointer; font-size: 14px; transition: background 0.1s ease;" onmouseover="this.style.background='var(--notion-hover)'" onmouseout="this.style.background='white'">
-        👁️ View Details
+         View Details
     </div>
     <div onclick="regenerateMeeting()" style="padding: 8px 12px; cursor: pointer; font-size: 14px; transition: background 0.1s ease;" onmouseover="this.style.background='var(--notion-hover)'" onmouseout="this.style.background='white'">
-        🔄 Regenerate
+         Regenerate
     </div>
     <div onclick="downloadMeeting()" style="padding: 8px 12px; cursor: pointer; font-size: 14px; transition: background 0.1s ease;" onmouseover="this.style.background='var(--notion-hover)'" onmouseout="this.style.background='white'">
-        📥 Download
+         Download
     </div>
     <div style="border-top: 1px solid var(--notion-border);"></div>
     <div onclick="deleteMeeting()" style="padding: 8px 12px; cursor: pointer; font-size: 14px; color: var(--notion-red); transition: background 0.1s ease;" onmouseover="this.style.background='var(--notion-hover)'" onmouseout="this.style.background='white'">
-        🗑️ Delete
+         Delete
     </div>
 </div>
 

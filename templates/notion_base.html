@@ -753,14 +753,14 @@
                     <span>New Meeting</span>
                 </a>
                 <a href="/live" class="nav-item {% if request.path == '/live' %}active{% endif %}">
-                    <span class="nav-icon">🔴</span>
+                    <span class="nav-icon"></span>
                     <span>Live Recording</span>
                 </a>
 
                 <div style="margin: 12px 14px; border-top: 1px solid var(--notion-border);"></div>
 
                 <a href="/settings" class="nav-item {% if request.path == '/settings' %}active{% endif %}">
-                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-icon"></span>
                     <span>Settings</span>
                 </a>
 
@@ -1116,7 +1116,7 @@
             const promptHtml = `
                 <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--notion-bg); border: 1px solid var(--notion-border); border-radius: 8px; padding: 32px; box-shadow: 0 16px 48px rgba(0,0,0,0.15); z-index: 10000; max-width: 480px; width: 90%;">
                     <div style="text-align: center; margin-bottom: 24px;">
-                        <div style="font-size: 48px; margin-bottom: 16px;">🎙️</div>
+                        <div style="font-size: 48px; margin-bottom: 16px;"></div>
                         <h2 style="font-size: 24px; font-weight: 600; color: var(--notion-text); margin-bottom: 8px;">
                             Meeting Starting Soon
                         </h2>
@@ -1131,7 +1131,7 @@
 
                     <div style="display: flex; flex-direction: column; gap: 12px;">
                         <button onclick="startRecordingNow('${meeting.id}', '${meeting.summary.replace(/'/g, "\\'")}')" style="padding: 14px 24px; background: var(--notion-blue); color: white; border: none; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 16px; font-weight: 600; transition: all 0.2s ease;">
-                            🎙️ Record This Meeting
+                             Record This Meeting
                         </button>
                         <button onclick="dismissPrompt()" style="padding: 12px 24px; background: none; color: var(--notion-text); border: 1px solid var(--notion-border); border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 14px; transition: all 0.2s ease;">
                             Not Now

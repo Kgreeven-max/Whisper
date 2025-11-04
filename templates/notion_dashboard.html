@@ -18,7 +18,7 @@
     <!-- View Switcher -->
     <div class="view-switcher">
         <button class="view-btn active" data-view="list" onclick="switchView('list')">
-            <span>📋</span>
+            <span></span>
             <span>List</span>
         </button>
         <button class="view-btn" data-view="calendar" onclick="window.location.href='/calendar'">
@@ -58,8 +58,8 @@
                         {% elif meeting[14] == 'planning' %}📅
                         {% elif meeting[14] == 'one-on-one' %}👥
                         {% elif meeting[14] == 'team-sync' %}🔄
-                        {% elif meeting[14] == 'brainstorming' %}💡
-                        {% elif meeting[14] == 'review' %}✅
+                        {% elif meeting[14] == 'brainstorming' %}Note:
+                        {% elif meeting[14] == 'review' %}
                         {% elif meeting[14] == 'client-call' %}📞
                         {% elif meeting[14] == 'interview' %}🎤
                         {% elif meeting[14] == 'training' %}📚
@@ -86,7 +86,7 @@
 
                     {% if meeting[14] and meeting[14] != 'general' %}
                     <span class="card-meta-item">
-                        📁 {{ meeting[14]|replace('-', ' ')|title }}
+                         {{ meeting[14]|replace('-', ' ')|title }}
                     </span>
                     {% endif %}
 
@@ -136,7 +136,7 @@
             {% endfor %}
         {% else %}
         <div class="notion-empty">
-            <div class="notion-empty-icon">🎙️</div>
+            <div class="notion-empty-icon"></div>
             <div class="notion-empty-title">No meetings yet</div>
             <div class="notion-empty-desc">Upload your first meeting recording to get started</div>
             <a href="/upload" class="notion-btn notion-btn-primary">Upload Meeting</a>
@@ -158,8 +158,8 @@
             <option value="planning">📅 Planning Meeting</option>
             <option value="one-on-one">👥 One-on-One</option>
             <option value="team-sync">🔄 Team Sync</option>
-            <option value="brainstorming">💡 Brainstorming</option>
-            <option value="review">✅ Review/Demo</option>
+            <option value="brainstorming">Note: Brainstorming</option>
+            <option value="review"> Review/Demo</option>
             <option value="client-call">📞 Client Call</option>
             <option value="interview">🎤 Interview</option>
             <option value="training">📚 Training</option>

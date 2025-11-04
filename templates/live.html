@@ -169,19 +169,23 @@
     <h1 class="card-title">Live Recording</h1>
 
     <div class="setup-instructions">
-        <h3>💡 How to Use Live Recording</h3>
+        <h3>Note: How to Use Live Recording</h3>
         <p><strong>Option 1: Desktop Client (Recommended)</strong></p>
         <p>Download and run the desktop client on your computer to capture system audio during meetings:</p>
 
-        <div style="background: var(--notion-hover); padding: 1rem; border-radius: 8px; margin: 1rem 0;">
-            <h4 style="margin-bottom: 0.5rem;">📥 Download Client Files:</h4>
-            <ul style="list-style: none; padding-left: 0;">
-                <li>→ <a href="/downloads/audio_capture.py" download style="color: var(--notion-blue); text-decoration: none;">audio_capture.py</a></li>
-                <li>→ <a href="/downloads/requirements.txt" download style="color: var(--notion-blue); text-decoration: none;">requirements.txt</a></li>
-                <li>→ <a href="/downloads/install_linux.sh" download style="color: var(--notion-blue); text-decoration: none;">install_linux.sh</a></li>
-                <li>→ <a href="/downloads/install_macos.sh" download style="color: var(--notion-blue); text-decoration: none;">install_macos.sh</a></li>
-                <li>→ <a href="/downloads/install_windows.bat" download style="color: var(--notion-blue); text-decoration: none;">install_windows.bat</a></li>
-            </ul>
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; margin: 1rem 0;">
+            <a href="/downloads/install_windows.bat" class="btn btn-primary" download style="text-decoration: none;">
+                Download for Windows
+            </a>
+            <a href="/downloads/install_macos.sh" class="btn btn-primary" download style="text-decoration: none;">
+                Download for macOS
+            </a>
+            <a href="/downloads/install_linux.sh" class="btn btn-primary" download style="text-decoration: none;">
+                Download for Linux
+            </a>
+            <a href="/downloads/all" class="btn btn-secondary" download style="text-decoration: none;">
+                Download All Files
+            </a>
         </div>
 
         <ol>
@@ -190,13 +194,13 @@
             <li>Select your audio device (use "Stereo Mix" or virtual cable for system audio)</li>
             <li>Start your meeting and the client will capture audio automatically</li>
         </ol>
-        <p class="mt-2"><strong>Option 2: Web Interface (Coming Soon)</strong></p>
-        <p>Browser-based recording using WebRTC (requires microphone permission)</p>
+        <p class="mt-2"><strong>Option 2: Web Interface</strong></p>
+        <p>Use the recording interface below to record directly from your browser (requires microphone permission)</p>
     </div>
 
     <div class="recording-status">
         <div class="recording-indicator" id="recording-indicator">
-            🎙️
+            
         </div>
         <div class="status-text" id="status-text">Ready to Record</div>
         <div class="timer" id="timer">00:00:00</div>

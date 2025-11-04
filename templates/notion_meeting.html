@@ -9,9 +9,9 @@
 {% endblock %}
 
 {% block topbar_actions %}
-<button onclick="showRegenerateModal()" class="topbar-btn">🔄 Regenerate</button>
-<a href="/download/{{ meeting.id }}" class="topbar-btn">📥 Download</a>
-<button onclick="deleteMeeting()" class="topbar-btn" style="color: var(--notion-red);">🗑️ Delete</button>
+<button onclick="showRegenerateModal()" class="topbar-btn"> Regenerate</button>
+<a href="/download/{{ meeting.id }}" class="topbar-btn"> Download</a>
+<button onclick="deleteMeeting()" class="topbar-btn" style="color: var(--notion-red);"> Delete</button>
 {% endblock %}
 
 {% block content %}
@@ -25,12 +25,12 @@
 
     <!-- Meta Info -->
     <div style="display: flex; gap: 20px; margin-bottom: 32px; font-size: 14px; color: var(--notion-gray);">
-        <span>📅 {{ meeting.date.strftime('%B %d, %Y at %I:%M %p') if meeting.date else 'No date' }}</span>
+        <span> {{ meeting.date.strftime('%B %d, %Y at %I:%M %p') if meeting.date else 'No date' }}</span>
         {% if meeting.attendees %}
-        <span>👥 {{ meeting.attendees }}</span>
+        <span> {{ meeting.attendees }}</span>
         {% endif %}
         {% if meeting.meeting_type and meeting.meeting_type != 'general' %}
-        <span>📁 {{ meeting.meeting_type|replace('-', ' ')|title }}</span>
+        <span> {{ meeting.meeting_type|replace('-', ' ')|title }}</span>
         {% endif %}
         <span class="card-badge
             {% if meeting.status == 'completed' %}badge-completed
@@ -58,14 +58,14 @@
              style="font-size: 14px; line-height: 1.6; min-height: 60px; outline: none; padding: 8px; border-radius: 3px; transition: background 0.1s ease;"
              onfocus="this.style.background='white'"
              onblur="if(!this.textContent.trim()){this.style.background='var(--notion-sidebar-bg)'}else{this.style.background='var(--notion-sidebar-bg)'}">{{ meeting.notes if meeting.notes else '' }}</div>
-        <div style="font-size: 12px; color: var(--notion-gray); margin-top: 8px;">💡 Click to add your own notes and thoughts about this meeting</div>
+        <div style="font-size: 12px; color: var(--notion-gray); margin-top: 8px;"> Click to add your own notes and thoughts about this meeting</div>
     </div>
 
     {% if meeting.status == 'completed' %}
     <!-- Summary -->
     <div class="notion-section" style="margin-bottom: 24px;">
         <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-            <span>📝</span> Summary
+            <span></span> Summary
         </h2>
         <div style="line-height: 1.8; color: var(--notion-text);">
             {{ meeting.summary if meeting.summary else 'No summary available' }}
@@ -75,7 +75,7 @@
     <!-- Key Points -->
     <div class="notion-section" style="margin-bottom: 24px;">
         <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-            <span>💡</span> Key Discussion Points
+            <span></span> Key Discussion Points
         </h2>
         {% if meeting.key_points %}
             {% for point in meeting.key_points %}
@@ -92,7 +92,7 @@
     <!-- Action Items -->
     <div class="notion-section" style="margin-bottom: 24px;">
         <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-            <span>✅</span> Action Items
+            <span></span> Action Items
         </h2>
         {% if meeting.action_items %}
             {% for item in meeting.action_items %}
@@ -109,12 +109,12 @@
     <!-- Decisions -->
     <div class="notion-section" style="margin-bottom: 24px;">
         <h2 style="font-size: 18px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-            <span>🎯</span> Decisions
+            <span></span> Decisions
         </h2>
         {% if meeting.decisions %}
             {% for decision in meeting.decisions %}
             <div style="display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--notion-border);">
-                <span style="color: var(--notion-blue);">→</span>
+                <span style="color: var(--notion-blue);"></span>
                 <span style="flex: 1;">{{ decision }}</span>
             </div>
             {% endfor %}
@@ -141,17 +141,17 @@
         <h3 style="margin-bottom: 16px; font-size: 18px; font-weight: 600;">Regenerate Meeting Analysis</h3>
         <p style="margin-bottom: 16px; font-size: 14px; color: var(--notion-gray);">Choose a new meeting type to re-analyze this meeting with AI:</p>
         <select id="regenerate-type" style="width: 100%; padding: 8px; border: 1px solid var(--notion-border); border-radius: 3px; font-size: 14px; margin-bottom: 16px; font-family: inherit;">
-            <option value="general" {% if meeting.meeting_type == 'general' %}selected{% endif %}>📝 General</option>
-            <option value="standup" {% if meeting.meeting_type == 'standup' %}selected{% endif %}>📊 Daily Standup</option>
-            <option value="retrospective" {% if meeting.meeting_type == 'retrospective' %}selected{% endif %}>🔄 Retrospective</option>
-            <option value="planning" {% if meeting.meeting_type == 'planning' %}selected{% endif %}>📅 Planning Meeting</option>
-            <option value="one-on-one" {% if meeting.meeting_type == 'one-on-one' %}selected{% endif %}>👥 One-on-One</option>
-            <option value="team-sync" {% if meeting.meeting_type == 'team-sync' %}selected{% endif %}>🔄 Team Sync</option>
-            <option value="brainstorming" {% if meeting.meeting_type == 'brainstorming' %}selected{% endif %}>💡 Brainstorming</option>
-            <option value="review" {% if meeting.meeting_type == 'review' %}selected{% endif %}>✅ Review/Demo</option>
-            <option value="client-call" {% if meeting.meeting_type == 'client-call' %}selected{% endif %}>📞 Client Call</option>
-            <option value="interview" {% if meeting.meeting_type == 'interview' %}selected{% endif %}>🎤 Interview</option>
-            <option value="training" {% if meeting.meeting_type == 'training' %}selected{% endif %}>📚 Training</option>
+            <option value="general" {% if meeting.meeting_type == 'general' %}selected{% endif %}> General</option>
+            <option value="standup" {% if meeting.meeting_type == 'standup' %}selected{% endif %}> Daily Standup</option>
+            <option value="retrospective" {% if meeting.meeting_type == 'retrospective' %}selected{% endif %}> Retrospective</option>
+            <option value="planning" {% if meeting.meeting_type == 'planning' %}selected{% endif %}> Planning Meeting</option>
+            <option value="one-on-one" {% if meeting.meeting_type == 'one-on-one' %}selected{% endif %}> One-on-One</option>
+            <option value="team-sync" {% if meeting.meeting_type == 'team-sync' %}selected{% endif %}> Team Sync</option>
+            <option value="brainstorming" {% if meeting.meeting_type == 'brainstorming' %}selected{% endif %}> Brainstorming</option>
+            <option value="review" {% if meeting.meeting_type == 'review' %}selected{% endif %}> Review/Demo</option>
+            <option value="client-call" {% if meeting.meeting_type == 'client-call' %}selected{% endif %}> Client Call</option>
+            <option value="interview" {% if meeting.meeting_type == 'interview' %}selected{% endif %}> Interview</option>
+            <option value="training" {% if meeting.meeting_type == 'training' %}selected{% endif %}> Training</option>
         </select>
         <div style="display: flex; gap: 8px; justify-content: flex-end;">
             <button onclick="closeRegenerateModal()" class="notion-btn notion-btn-secondary">Cancel</button>
@@ -213,7 +213,7 @@ async function regenerateMeeting() {
         });
         if (response.ok) {
             closeRegenerateModal();
-            alert('🔄 Regenerating... Page will refresh in 3 seconds.');
+            alert(' Regenerating... Page will refresh in 3 seconds.');
             setTimeout(() => location.reload(), 3000);
         } else {
             alert('Failed to regenerate');

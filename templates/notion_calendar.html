@@ -3,7 +3,7 @@
 {% block title %}Calendar - Meeting Transcriber{% endblock %}
 
 {% block breadcrumb %}
-<span>📅 Calendar</span>
+<span> Calendar</span>
 {% endblock %}
 
 {% block topbar_actions %}
@@ -20,15 +20,15 @@
     <!-- View Switcher -->
     <div class="view-switcher">
         <button class="view-btn" data-view="list" onclick="window.location.href='/'">
-            <span>📋</span>
+            <span></span>
             <span>List</span>
         </button>
         <button class="view-btn active" data-view="calendar">
-            <span>📅</span>
+            <span></span>
             <span>Calendar</span>
         </button>
         <button class="view-btn" data-view="table" onclick="window.location.href='/table'">
-            <span>📊</span>
+            <span></span>
             <span>Table</span>
         </button>
     </div>
@@ -43,7 +43,7 @@
                 {{ current_month }} {{ current_year }}
             </h2>
             <button onclick="nextMonth()" class="notion-btn notion-btn-ghost">
-                →
+                
             </button>
         </div>
         <button onclick="goToToday()" class="notion-btn notion-btn-secondary">
@@ -76,16 +76,16 @@
                  {% elif meeting.meeting_type == 'planning' %}background: #10b981;
                  {% elif meeting.meeting_type == 'retrospective' %}background: #f59e0b;
                  {% else %}background: var(--notion-blue);{% endif %}">
-                {% if meeting.meeting_type == 'standup' %}📊
-                {% elif meeting.meeting_type == 'one-on-one' %}👥
-                {% elif meeting.meeting_type == 'planning' %}📅
-                {% elif meeting.meeting_type == 'retrospective' %}🔄
-                {% elif meeting.meeting_type == 'brainstorming' %}💡
-                {% elif meeting.meeting_type == 'review' %}✅
-                {% elif meeting.meeting_type == 'client-call' %}📞
-                {% elif meeting.meeting_type == 'interview' %}🎤
-                {% elif meeting.meeting_type == 'training' %}📚
-                {% else %}📝{% endif %}
+                {% if meeting.meeting_type == 'standup' %}
+                {% elif meeting.meeting_type == 'one-on-one' %}
+                {% elif meeting.meeting_type == 'planning' %}
+                {% elif meeting.meeting_type == 'retrospective' %}
+                {% elif meeting.meeting_type == 'brainstorming' %}
+                {% elif meeting.meeting_type == 'review' %}
+                {% elif meeting.meeting_type == 'client-call' %}
+                {% elif meeting.meeting_type == 'interview' %}
+                {% elif meeting.meeting_type == 'training' %}
+                {% else %}{% endif %}
                 {{ meeting.title[:20] }}{% if meeting.title|length > 20 %}...{% endif %}
             </div>
             {% endfor %}

@@ -151,9 +151,9 @@
                 <div>
                     <h3 class="meeting-title">{{ meeting[2] }}</h3>
                     <div class="meeting-meta">
-                        <span>📅 {{ meeting[3][:16] }}</span>
+                        <span> {{ meeting[3][:16] }}</span>
                         {% if meeting[10] %}
-                        <span>👥 {{ meeting[10] }}</span>
+                        <span> {{ meeting[10] }}</span>
                         {% endif %}
                         {% if meeting[14] and meeting[14] != 'general' %}
                         <span>📁 {{ meeting[14]|replace('-', ' ')|title }}</span>
@@ -188,7 +188,7 @@
         {% endfor %}
     {% else %}
     <div class="empty-state">
-        <div class="empty-state-icon">🎙️</div>
+        <div class="empty-state-icon"></div>
         <h2>No meetings yet</h2>
         <p class="mt-2 mb-3">Upload your first meeting recording to get started</p>
         <a href="/upload" class="btn btn-primary">Upload Meeting</a>
@@ -253,7 +253,7 @@
                     <div>
                         <h3 class="meeting-title">${meeting.title}</h3>
                         <div class="meeting-meta">
-                            <span>📅 ${meeting.date.substring(0, 16)}</span>
+                            <span> ${meeting.date.substring(0, 16)}</span>
                         </div>
                     </div>
                 </div>

@@ -3,7 +3,7 @@
 {% block title %}Settings - Meeting Transcriber{% endblock %}
 
 {% block breadcrumb %}
-<span>⚙️ Settings</span>
+<span> Settings</span>
 {% endblock %}
 
 {% block content %}
@@ -51,7 +51,7 @@
     <!-- Change Password -->
     <div style="margin-bottom: 40px;">
         <h2 style="font-size: 18px; font-weight: 600; color: var(--notion-text); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
-            <span>🔒</span>
+            <span></span>
             <span>Change Password</span>
         </h2>
 
@@ -113,7 +113,7 @@
     <!-- Account Statistics -->
     <div style="margin-bottom: 40px;">
         <h2 style="font-size: 18px; font-weight: 600; color: var(--notion-text); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
-            <span>📊</span>
+            <span></span>
             <span>Account Statistics</span>
         </h2>
 
@@ -134,7 +134,7 @@
     <!-- Calendar Integration (Notion-style Auto-Record) -->
     <div style="margin-bottom: 40px;">
         <h2 style="font-size: 18px; font-weight: 600; color: var(--notion-text); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
-            <span>📅</span>
+            <span></span>
             <span>Calendar Integration</span>
         </h2>
 
@@ -167,7 +167,7 @@
                         <li>Meeting title automatically filled</li>
                     </ul>
                     <button onclick="connectCalendar()" class="notion-btn notion-btn-primary" style="padding: 10px 20px; font-size: 14px;">
-                        📅 Connect Google Calendar
+                         Connect Google Calendar
                     </button>
                 </div>
             </div>
@@ -216,7 +216,7 @@
                 Download all your meeting data as a JSON file
             </p>
             <button onclick="exportData()" class="notion-btn notion-btn-secondary" style="padding: 8px 16px;">
-                📥 Export All Data
+                 Export All Data
             </button>
         </div>
     </div>
@@ -224,7 +224,7 @@
     <!-- Danger Zone -->
     <div style="margin-bottom: 40px;">
         <h2 style="font-size: 18px; font-weight: 600; color: var(--notion-red); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
-            <span>⚠️</span>
+            <span>Warning:</span>
             <span>Danger Zone</span>
         </h2>
 
@@ -340,7 +340,7 @@
     // Delete Account
     // ============================================================
     function confirmDeleteAccount() {
-        const confirmed = confirm('⚠️ Are you absolutely sure?\n\nThis will permanently delete your account and all your meetings. This action CANNOT be undone.\n\nType "DELETE" in the next prompt to confirm.');
+        const confirmed = confirm('Warning: Are you absolutely sure?\n\nThis will permanently delete your account and all your meetings. This action CANNOT be undone.\n\nType "DELETE" in the next prompt to confirm.');
 
         if (confirmed) {
             const verification = prompt('Type "DELETE" to confirm account deletion:');
