@@ -1,2 +1,20 @@
 pyaudio==0.2.14
 requests==2.32.3
+psutil==5.9.8
+plyer==2.1.0
+pystray==0.19.5
+Pillow==10.2.0
+
+# Calendar integration (optional - install based on provider)
+google-auth==2.28.0
+google-auth-oauthlib==1.2.0
+google-auth-httplib2==0.2.0
+google-api-python-client==2.117.0
+msal==1.26.0
+
+# Platform-specific (install based on OS)
+# Windows:
+# pywin32==306  # Uncomment for Windows
+
+# Linux:
+# python-xlib==0.33  # Uncomment for Linux

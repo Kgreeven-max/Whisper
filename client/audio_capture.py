@@ -234,18 +234,36 @@ class AudioCapture:
 
 
 def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Meeting Transcriber - Live Audio Capture')
+    parser.add_argument('--vps-url', help='VPS URL', default=VPS_URL)
+    parser.add_argument('--title', help='Meeting title', default=None)
+    parser.add_argument('--auto-start', action='store_true', help='Start recording automatically without prompts')
+    parser.add_argument('--device', type=int, help='Audio device index', default=None)
+
+    args = parser.parse_args()
+
     print("=" * 50)
     print("Meeting Transcriber - Live Audio Capture")
     print("=" * 50)
 
     # Get VPS URL
-    vps_url = input(f"\nEnter VPS URL [{VPS_URL}]: ").strip()
-    if not vps_url:
-        vps_url = VPS_URL
+    if not args.auto_start:
+        vps_url = input(f"\nEnter VPS URL [{args.vps_url}]: ").strip()
+        if not vps_url:
+            vps_url = args.vps_url
+    else:
+        vps_url = args.vps_url
 
     # Get meeting title
-    meeting_title = input("Enter meeting title [Live Meeting]: ").strip()
-    if not meeting_title:
+    if args.title:
+        meeting_title = args.title
+    elif not args.auto_start:
+        meeting_title = input("Enter meeting title [Live Meeting]: ").strip()
+        if not meeting_title:
+            meeting_title = "Live Meeting"
+    else:
         meeting_title = "Live Meeting"
 
     # Create capture instance
@@ -263,14 +281,19 @@ def main():
         return
 
     # Select device
-    print("\nSelect audio device:")
-    print("💡 Tip: For system audio capture:")
-    print("   - Windows: Use 'Stereo Mix' or install VB-Cable")
-    print("   - Mac: Use BlackHole or Loopback")
-    print("   - Linux: Use PulseAudio monitor device")
+    if args.device is not None:
+        device_index = args.device
+    elif not args.auto_start:
+        print("\nSelect audio device:")
+        print("💡 Tip: For system audio capture:")
+        print("   - Windows: Use 'Stereo Mix' or install VB-Cable")
+        print("   - Mac: Use BlackHole or Loopback")
+        print("   - Linux: Use PulseAudio monitor device")
 
-    device_input = input(f"\nDevice number [0]: ").strip()
-    device_index = int(device_input) if device_input else 0
+        device_input = input(f"\nDevice number [0]: ").strip()
+        device_index = int(device_input) if device_input else 0
+    else:
+        device_index = 0  # Use default device in auto-start mode
 
     # Verify VPS connection
     print(f"\n🔄 Testing connection to {vps_url}...")
