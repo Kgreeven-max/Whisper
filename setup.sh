@@ -123,9 +123,11 @@ echo ""
 # Generate passwords
 POSTGRES_PASSWORD=$(generate_password)
 SECRET_KEY=$(generate_secret)
+JWT_SECRET=$(generate_secret)
 
 echo -e "${GREEN}✓ PostgreSQL password generated (32 characters)${NC}"
 echo -e "${GREEN}✓ Flask secret key generated (64 characters)${NC}"
+echo -e "${GREEN}✓ JWT secret generated (64 characters)${NC}"
 echo ""
 
 # Offer to show passwords (for manual backup)
@@ -138,6 +140,7 @@ if [[ $show_passwords =~ ^[Yy]$ ]]; then
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "PostgreSQL Password: ${BOLD}$POSTGRES_PASSWORD${NC}"
     echo -e "Flask Secret Key:    ${BOLD}$SECRET_KEY${NC}"
+    echo -e "JWT Secret:          ${BOLD}$JWT_SECRET${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
     echo -e "${YELLOW}Press Enter when you've saved these...${NC}"
@@ -159,6 +162,7 @@ POSTGRES_PASSWORD=$POSTGRES_PASSWORD
 # Flask Security
 FLASK_ENV=production
 SECRET_KEY=$SECRET_KEY
+JWT_SECRET=$JWT_SECRET
 
 # AI Models (optimized for your RAM)
 WHISPER_MODEL=$WHISPER_MODEL

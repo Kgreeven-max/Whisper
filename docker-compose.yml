@@ -80,6 +80,7 @@ services:
       - PYTHONUNBUFFERED=1
       - DATABASE_URL=postgresql://${POSTGRES_USER:-meeting_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-meetings}
       - SECRET_KEY=${SECRET_KEY:?Please set SECRET_KEY in .env file}
+      - JWT_SECRET=${JWT_SECRET:-${SECRET_KEY}}
       - OLLAMA_MODEL=${OLLAMA_MODEL:-phi}
       - WHISPER_MODEL=${WHISPER_MODEL:-small}
     volumes:

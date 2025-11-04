@@ -8,12 +8,18 @@ import psycopg2.extras
 import psycopg2.pool
 from werkzeug.utils import secure_filename
 import time
+import jwt
+import bcrypt
+from functools import wraps
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = '/app/uploads'
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB max
 app.config['DATABASE_URL'] = os.getenv('DATABASE_URL', 'postgresql://meeting_user:meeting_pass_change_in_production@postgres:5432/meetings')
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-change-in-production')  # Required for sessions
+app.config['JWT_SECRET'] = os.getenv('JWT_SECRET', os.getenv('SECRET_KEY', 'dev-jwt-secret-change-in-production'))  # JWT signing key
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 3600  # 1 hour
+app.config['JWT_REFRESH_TOKEN_EXPIRES'] = 2592000  # 30 days
 
 # Create upload directory if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -65,9 +71,26 @@ def init_db():
         try:
             conn = get_db()
             c = conn.cursor()
+
+            # Create users table
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    email TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    security_question TEXT NOT NULL,
+                    security_answer_hash TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    last_login TIMESTAMP
+                )
+            ''')
+
+            # Create meetings table with user_id foreign key
             c.execute('''
                 CREATE TABLE IF NOT EXISTS meetings (
                     id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                     title TEXT NOT NULL,
                     date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     audio_file TEXT,
@@ -82,6 +105,23 @@ def init_db():
                     status TEXT DEFAULT 'processing'
                 )
             ''')
+
+            # Create index on user_id for faster queries
+            c.execute('''
+                CREATE INDEX IF NOT EXISTS idx_meetings_user_id ON meetings(user_id)
+            ''')
+
+            # Create refresh tokens table
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS refresh_tokens (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    token TEXT UNIQUE NOT NULL,
+                    expires_at TIMESTAMP NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
             conn.commit()
             conn.close()
             print("Database initialized successfully!")
@@ -94,19 +134,411 @@ def init_db():
                 print(f"Failed to initialize database after {max_retries} attempts: {e}")
                 raise
 
-@app.route('/')
-def index():
-    """Main dashboard showing all meetings"""
+# ============================================================
+# AUTHENTICATION FUNCTIONS
+# ============================================================
+
+def hash_password(password):
+    """Hash password using bcrypt"""
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+def verify_password(password, password_hash):
+    """Verify password against hash"""
+    return bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
+
+def generate_access_token(user_id):
+    """Generate JWT access token"""
+    payload = {
+        'user_id': user_id,
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(seconds=app.config['JWT_ACCESS_TOKEN_EXPIRES']),
+        'iat': datetime.datetime.utcnow(),
+        'type': 'access'
+    }
+    return jwt.encode(payload, app.config['JWT_SECRET'], algorithm='HS256')
+
+def generate_refresh_token(user_id):
+    """Generate JWT refresh token and store in database"""
+    payload = {
+        'user_id': user_id,
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(seconds=app.config['JWT_REFRESH_TOKEN_EXPIRES']),
+        'iat': datetime.datetime.utcnow(),
+        'type': 'refresh'
+    }
+    token = jwt.encode(payload, app.config['JWT_SECRET'], algorithm='HS256')
+
+    # Store in database
     conn = get_db()
     try:
         c = conn.cursor()
-        c.execute('SELECT * FROM meetings ORDER BY date DESC LIMIT 50')
+        c.execute('''
+            INSERT INTO refresh_tokens (user_id, token, expires_at)
+            VALUES (%s, %s, %s)
+        ''', (user_id, token, datetime.datetime.utcnow() + datetime.timedelta(seconds=app.config['JWT_REFRESH_TOKEN_EXPIRES'])))
+        conn.commit()
+    finally:
+        conn.close()
+
+    return token
+
+def jwt_required(f):
+    """Decorator to require JWT authentication"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        token = None
+
+        # Get token from Authorization header
+        if 'Authorization' in request.headers:
+            auth_header = request.headers['Authorization']
+            try:
+                token = auth_header.split(' ')[1]  # Bearer <token>
+            except IndexError:
+                return jsonify({'error': 'Invalid authorization header format'}), 401
+
+        # Get token from cookie (for browser requests)
+        elif 'access_token' in request.cookies:
+            token = request.cookies.get('access_token')
+
+        if not token:
+            return jsonify({'error': 'Authorization token required'}), 401
+
+        try:
+            # Decode token
+            payload = jwt.decode(token, app.config['JWT_SECRET'], algorithms=['HS256'])
+
+            # Verify token type
+            if payload.get('type') != 'access':
+                return jsonify({'error': 'Invalid token type'}), 401
+
+            # Get user from database to ensure they still exist
+            conn = get_db()
+            try:
+                c = conn.cursor()
+                c.execute('SELECT id, username, email FROM users WHERE id = %s', (payload['user_id'],))
+                user = c.fetchone()
+
+                if not user:
+                    return jsonify({'error': 'User not found'}), 401
+
+                # Add user info to request context
+                request.current_user = {
+                    'user_id': user['id'],
+                    'username': user['username'],
+                    'email': user['email']
+                }
+            finally:
+                conn.close()
+
+        except jwt.ExpiredSignatureError:
+            return jsonify({'error': 'Token has expired'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'error': 'Invalid token'}), 401
+        except Exception as e:
+            print(f"JWT verification error: {e}")
+            return jsonify({'error': 'Token verification failed'}), 401
+
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+# ============================================================
+# AUTHENTICATION ROUTES
+# ============================================================
+
+@app.route('/auth/register', methods=['POST'])
+def register():
+    """Register new user"""
+    data = request.json
+
+    if not data or not data.get('username') or not data.get('email') or not data.get('password') or not data.get('security_question') or not data.get('security_answer'):
+        return jsonify({'error': 'Username, email, password, security question, and security answer required'}), 400
+
+    username = data['username'].strip()
+    email = data['email'].strip().lower()
+    password = data['password']
+    security_question = data['security_question'].strip()
+    security_answer = data['security_answer'].strip()
+
+    # Validation
+    if len(username) < 3:
+        return jsonify({'error': 'Username must be at least 3 characters'}), 400
+    if len(password) < 8:
+        return jsonify({'error': 'Password must be at least 8 characters'}), 400
+    if '@' not in email:
+        return jsonify({'error': 'Invalid email address'}), 400
+    if len(security_question) < 5:
+        return jsonify({'error': 'Security question must be at least 5 characters'}), 400
+    if len(security_answer) < 3:
+        return jsonify({'error': 'Security answer must be at least 3 characters'}), 400
+
+    # Hash password and security answer
+    password_hash = hash_password(password)
+    security_answer_hash = hash_password(security_answer.lower())  # Lowercase for case-insensitive comparison
+
+    # Create user
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute('''
+            INSERT INTO users (username, email, password_hash, security_question, security_answer_hash)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id
+        ''', (username, email, password_hash, security_question, security_answer_hash))
+        user_id = c.fetchone()[0]
+        conn.commit()
+
+        # Generate tokens
+        access_token = generate_access_token(user_id)
+        refresh_token = generate_refresh_token(user_id)
+
+        return jsonify({
+            'message': 'User registered successfully',
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'user': {
+                'id': user_id,
+                'username': username,
+                'email': email
+            }
+        }), 201
+
+    except psycopg2.errors.UniqueViolation:
+        return jsonify({'error': 'Username or email already exists'}), 409
+    except Exception as e:
+        print(f"Registration error: {e}")
+        return jsonify({'error': 'Registration failed'}), 500
+    finally:
+        conn.close()
+
+@app.route('/auth/login', methods=['POST'])
+def login():
+    """Login user"""
+    data = request.json
+
+    if not data or not data.get('username') or not data.get('password'):
+        return jsonify({'error': 'Username and password required'}), 400
+
+    username = data['username'].strip()
+    password = data['password']
+
+    # Get user from database
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute('SELECT id, username, email, password_hash FROM users WHERE username = %s', (username,))
+        user = c.fetchone()
+
+        if not user:
+            return jsonify({'error': 'Invalid username or password'}), 401
+
+        # Verify password
+        if not verify_password(password, user['password_hash']):
+            return jsonify({'error': 'Invalid username or password'}), 401
+
+        # Update last login
+        c.execute('UPDATE users SET last_login = %s WHERE id = %s', (datetime.datetime.utcnow(), user['id']))
+        conn.commit()
+
+        # Generate tokens
+        access_token = generate_access_token(user['id'])
+        refresh_token = generate_refresh_token(user['id'])
+
+        return jsonify({
+            'message': 'Login successful',
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'user': {
+                'id': user['id'],
+                'username': user['username'],
+                'email': user['email']
+            }
+        }), 200
+
+    except Exception as e:
+        print(f"Login error: {e}")
+        return jsonify({'error': 'Login failed'}), 500
+    finally:
+        conn.close()
+
+@app.route('/auth/refresh', methods=['POST'])
+def refresh():
+    """Refresh access token using refresh token"""
+    data = request.json
+
+    if not data or not data.get('refresh_token'):
+        return jsonify({'error': 'Refresh token required'}), 400
+
+    refresh_token = data['refresh_token']
+
+    try:
+        # Decode refresh token
+        payload = jwt.decode(refresh_token, app.config['JWT_SECRET'], algorithms=['HS256'])
+
+        # Verify token type
+        if payload.get('type') != 'refresh':
+            return jsonify({'error': 'Invalid token type'}), 401
+
+        # Verify token exists in database and not revoked
+        conn = get_db()
+        try:
+            c = conn.cursor()
+            c.execute('''
+                SELECT user_id FROM refresh_tokens
+                WHERE token = %s AND expires_at > %s
+            ''', (refresh_token, datetime.datetime.utcnow()))
+            token_data = c.fetchone()
+
+            if not token_data:
+                return jsonify({'error': 'Invalid or expired refresh token'}), 401
+
+            # Generate new access token
+            access_token = generate_access_token(token_data['user_id'])
+
+            return jsonify({
+                'access_token': access_token
+            }), 200
+
+        finally:
+            conn.close()
+
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Refresh token has expired'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'error': 'Invalid refresh token'}), 401
+    except Exception as e:
+        print(f"Token refresh error: {e}")
+        return jsonify({'error': 'Token refresh failed'}), 500
+
+@app.route('/auth/logout', methods=['POST'])
+@jwt_required
+def logout():
+    """Logout user and revoke refresh tokens"""
+    data = request.json
+
+    if data and data.get('refresh_token'):
+        # Revoke specific refresh token
+        conn = get_db()
+        try:
+            c = conn.cursor()
+            c.execute('DELETE FROM refresh_tokens WHERE token = %s', (data['refresh_token'],))
+            conn.commit()
+        finally:
+            conn.close()
+    else:
+        # Revoke all refresh tokens for user
+        conn = get_db()
+        try:
+            c = conn.cursor()
+            c.execute('DELETE FROM refresh_tokens WHERE user_id = %s', (request.current_user['user_id'],))
+            conn.commit()
+        finally:
+            conn.close()
+
+    return jsonify({'message': 'Logged out successfully'}), 200
+
+@app.route('/auth/me', methods=['GET'])
+@jwt_required
+def get_current_user():
+    """Get current user info"""
+    return jsonify({
+        'user': request.current_user
+    }), 200
+
+@app.route('/auth/forgot-password/question', methods=['POST'])
+def get_security_question():
+    """Get security question for username"""
+    data = request.json
+
+    if not data or not data.get('username'):
+        return jsonify({'error': 'Username required'}), 400
+
+    username = data['username'].strip()
+
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute('SELECT security_question FROM users WHERE username = %s', (username,))
+        user = c.fetchone()
+
+        if not user:
+            return jsonify({'error': 'Username not found'}), 404
+
+        return jsonify({
+            'security_question': user['security_question']
+        }), 200
+
+    except Exception as e:
+        print(f"Error fetching security question: {e}")
+        return jsonify({'error': 'Failed to retrieve security question'}), 500
+    finally:
+        conn.close()
+
+@app.route('/auth/reset-password', methods=['POST'])
+def reset_password():
+    """Reset password using security answer"""
+    data = request.json
+
+    if not data or not data.get('username') or not data.get('security_answer') or not data.get('new_password'):
+        return jsonify({'error': 'Username, security answer, and new password required'}), 400
+
+    username = data['username'].strip()
+    security_answer = data['security_answer'].strip().lower()  # Lowercase for case-insensitive comparison
+    new_password = data['new_password']
+
+    # Validate new password
+    if len(new_password) < 8:
+        return jsonify({'error': 'New password must be at least 8 characters'}), 400
+
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute('SELECT id, security_answer_hash FROM users WHERE username = %s', (username,))
+        user = c.fetchone()
+
+        if not user:
+            return jsonify({'error': 'Invalid username or security answer'}), 401
+
+        # Verify security answer
+        if not verify_password(security_answer, user['security_answer_hash']):
+            return jsonify({'error': 'Invalid username or security answer'}), 401
+
+        # Hash new password
+        new_password_hash = hash_password(new_password)
+
+        # Update password
+        c.execute('UPDATE users SET password_hash = %s WHERE id = %s', (new_password_hash, user['id']))
+        conn.commit()
+
+        # Revoke all existing refresh tokens for security
+        c.execute('DELETE FROM refresh_tokens WHERE user_id = %s', (user['id'],))
+        conn.commit()
+
+        return jsonify({'message': 'Password reset successfully'}), 200
+
+    except Exception as e:
+        print(f"Password reset error: {e}")
+        return jsonify({'error': 'Password reset failed'}), 500
+    finally:
+        conn.close()
+
+# ============================================================
+# MEETING ROUTES (Protected)
+# ============================================================
+
+@app.route('/')
+@jwt_required
+def index():
+    """Main dashboard showing all meetings for current user"""
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute('SELECT * FROM meetings WHERE user_id = %s ORDER BY date DESC LIMIT 50', (request.current_user['user_id'],))
         meetings = c.fetchall()
-        return render_template('dashboard.html', meetings=meetings)
+        return render_template('dashboard.html', meetings=meetings, user=request.current_user)
     finally:
         conn.close()
 
 @app.route('/upload', methods=['GET', 'POST'])
+@jwt_required
 def upload_meeting():
     """Upload and process meeting audio"""
     if request.method == 'POST':
@@ -130,15 +562,15 @@ def upload_meeting():
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
 
-        # Create initial database entry
+        # Create initial database entry with user_id
         conn = get_db()
         try:
             c = conn.cursor()
             c.execute('''
-                INSERT INTO meetings (title, audio_file, attendees, tags, status)
-                VALUES (%s, %s, %s, %s, 'processing')
+                INSERT INTO meetings (user_id, title, audio_file, attendees, tags, status)
+                VALUES (%s, %s, %s, %s, %s, 'processing')
                 RETURNING id
-            ''', (title, filename, attendees, tags))
+            ''', (request.current_user['user_id'], title, filename, attendees, tags))
             meeting_id = c.fetchone()[0]
             conn.commit()
         finally:
@@ -152,7 +584,7 @@ def upload_meeting():
             conn = get_db()
             try:
                 c = conn.cursor()
-                c.execute('UPDATE meetings SET status = %s WHERE id = %s', ('error', meeting_id))
+                c.execute('UPDATE meetings SET status = %s WHERE id = %s AND user_id = %s', ('error', meeting_id, request.current_user['user_id']))
                 conn.commit()
             finally:
                 conn.close()
@@ -160,7 +592,7 @@ def upload_meeting():
 
         return redirect(url_for('view_meeting', meeting_id=meeting_id))
 
-    return render_template('upload.html')
+    return render_template('upload.html', user=request.current_user)
 
 def process_meeting_audio(audio_path, meeting_id, title):
     """Process audio through Whisper and Ollama"""
@@ -307,16 +739,17 @@ def parse_analysis(text):
     return summary.strip(), key_points, action_items, decisions
 
 @app.route('/meeting/<int:meeting_id>')
+@jwt_required
 def view_meeting(meeting_id):
     """View individual meeting details"""
     conn = get_db()
     try:
         c = conn.cursor()
-        c.execute('SELECT * FROM meetings WHERE id = %s', (meeting_id,))
+        c.execute('SELECT * FROM meetings WHERE id = %s AND user_id = %s', (meeting_id, request.current_user['user_id']))
         meeting = c.fetchone()
 
         if not meeting:
-            return "Meeting not found", 404
+            return "Meeting not found or access denied", 404
 
         # Parse JSON fields
         meeting_data = dict(meeting)
@@ -324,7 +757,7 @@ def view_meeting(meeting_id):
         meeting_data['action_items'] = json.loads(meeting['action_items'] or '[]')
         meeting_data['decisions'] = json.loads(meeting['decisions'] or '[]')
 
-        return render_template('meeting.html', meeting=meeting_data)
+        return render_template('meeting.html', meeting=meeting_data, user=request.current_user)
     finally:
         conn.close()
 
