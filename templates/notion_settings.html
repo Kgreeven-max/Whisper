@@ -1,0 +1,337 @@
+{% extends "notion_base.html" %}
+
+{% block title %}Settings - Meeting Transcriber{% endblock %}
+
+{% block breadcrumb %}
+<span>⚙️ Settings</span>
+{% endblock %}
+
+{% block content %}
+<div class="fade-in" style="padding: 60px 96px; max-width: 800px; margin: 0 auto;">
+    <!-- Page Title -->
+    <h1 class="notion-page-title" style="margin-bottom: 8px;">Settings</h1>
+    <p style="color: var(--notion-gray); font-size: 14px; margin-bottom: 40px;">
+        Manage your account and preferences
+    </p>
+
+    <!-- Account Information -->
+    <div style="margin-bottom: 40px;">
+        <h2 style="font-size: 18px; font-weight: 600; color: var(--notion-text); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+            <span>👤</span>
+            <span>Account Information</span>
+        </h2>
+
+        <div style="background: var(--notion-bg); border: 1px solid var(--notion-border); border-radius: 6px; padding: 20px;">
+            <div style="margin-bottom: 16px;">
+                <label style="display: block; font-size: 13px; font-weight: 600; color: var(--notion-text); margin-bottom: 6px;">
+                    Username
+                </label>
+                <input
+                    type="text"
+                    value="{{ user.username }}"
+                    disabled
+                    style="width: 100%; padding: 8px 12px; border: 1px solid var(--notion-border); border-radius: 3px; font-size: 14px; font-family: inherit; color: var(--notion-text-light); background: var(--notion-sidebar-bg);"
+                >
+            </div>
+
+            <div>
+                <label style="display: block; font-size: 13px; font-weight: 600; color: var(--notion-text); margin-bottom: 6px;">
+                    Email
+                </label>
+                <input
+                    type="email"
+                    value="{{ user.email }}"
+                    disabled
+                    style="width: 100%; padding: 8px 12px; border: 1px solid var(--notion-border); border-radius: 3px; font-size: 14px; font-family: inherit; color: var(--notion-text-light); background: var(--notion-sidebar-bg);"
+                >
+            </div>
+        </div>
+    </div>
+
+    <!-- Change Password -->
+    <div style="margin-bottom: 40px;">
+        <h2 style="font-size: 18px; font-weight: 600; color: var(--notion-text); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+            <span>🔒</span>
+            <span>Change Password</span>
+        </h2>
+
+        <div style="background: var(--notion-bg); border: 1px solid var(--notion-border); border-radius: 6px; padding: 20px;">
+            <form id="password-form">
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: var(--notion-text); margin-bottom: 6px;">
+                        Current Password
+                    </label>
+                    <input
+                        type="password"
+                        id="current-password"
+                        required
+                        style="width: 100%; padding: 8px 12px; border: 1px solid var(--notion-border); border-radius: 3px; font-size: 14px; font-family: inherit; color: var(--notion-text); background: var(--notion-bg); transition: border-color 0.1s ease;"
+                        onfocus="this.style.borderColor='var(--notion-blue)'"
+                        onblur="this.style.borderColor='var(--notion-border)'"
+                    >
+                </div>
+
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: var(--notion-text); margin-bottom: 6px;">
+                        New Password
+                    </label>
+                    <input
+                        type="password"
+                        id="new-password"
+                        required
+                        minlength="8"
+                        style="width: 100%; padding: 8px 12px; border: 1px solid var(--notion-border); border-radius: 3px; font-size: 14px; font-family: inherit; color: var(--notion-text); background: var(--notion-bg); transition: border-color 0.1s ease;"
+                        onfocus="this.style.borderColor='var(--notion-blue)'"
+                        onblur="this.style.borderColor='var(--notion-border)'"
+                    >
+                    <p style="font-size: 12px; color: var(--notion-gray); margin-top: 4px;">
+                        Minimum 8 characters
+                    </p>
+                </div>
+
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; font-size: 13px; font-weight: 600; color: var(--notion-text); margin-bottom: 6px;">
+                        Confirm New Password
+                    </label>
+                    <input
+                        type="password"
+                        id="confirm-password"
+                        required
+                        style="width: 100%; padding: 8px 12px; border: 1px solid var(--notion-border); border-radius: 3px; font-size: 14px; font-family: inherit; color: var(--notion-text); background: var(--notion-bg); transition: border-color 0.1s ease;"
+                        onfocus="this.style.borderColor='var(--notion-blue)'"
+                        onblur="this.style.borderColor='var(--notion-border)'"
+                    >
+                </div>
+
+                <button type="submit" class="notion-btn notion-btn-primary" style="padding: 8px 16px;">
+                    Update Password
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Account Statistics -->
+    <div style="margin-bottom: 40px;">
+        <h2 style="font-size: 18px; font-weight: 600; color: var(--notion-text); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+            <span>📊</span>
+            <span>Account Statistics</span>
+        </h2>
+
+        <div style="background: var(--notion-bg); border: 1px solid var(--notion-border); border-radius: 6px; padding: 20px;">
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
+                <div>
+                    <p style="font-size: 12px; color: var(--notion-gray); margin-bottom: 4px;">Total Meetings</p>
+                    <p style="font-size: 24px; font-weight: 600; color: var(--notion-text);" id="total-meetings">-</p>
+                </div>
+                <div>
+                    <p style="font-size: 12px; color: var(--notion-gray); margin-bottom: 4px;">Account Created</p>
+                    <p style="font-size: 16px; font-weight: 500; color: var(--notion-text);" id="account-created">-</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Preferences -->
+    <div style="margin-bottom: 40px;">
+        <h2 style="font-size: 18px; font-weight: 600; color: var(--notion-text); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+            <span>🎨</span>
+            <span>Preferences</span>
+        </h2>
+
+        <div style="background: var(--notion-bg); border: 1px solid var(--notion-border); border-radius: 6px; padding: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--notion-border);">
+                <div>
+                    <p style="font-size: 14px; font-weight: 500; color: var(--notion-text); margin-bottom: 2px;">Dark Mode</p>
+                    <p style="font-size: 12px; color: var(--notion-gray);">Toggle between light and dark themes</p>
+                </div>
+                <button onclick="toggleTheme()" class="notion-btn notion-btn-ghost" style="padding: 6px 12px;">
+                    <span id="theme-text">Toggle</span>
+                </button>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0;">
+                <div>
+                    <p style="font-size: 14px; font-weight: 500; color: var(--notion-text); margin-bottom: 2px;">Keyboard Shortcuts</p>
+                    <p style="font-size: 12px; color: var(--notion-gray);">View all available keyboard shortcuts</p>
+                </div>
+                <button onclick="showKeyboardShortcuts()" class="notion-btn notion-btn-ghost" style="padding: 6px 12px;">
+                    View
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Export -->
+    <div style="margin-bottom: 40px;">
+        <h2 style="font-size: 18px; font-weight: 600; color: var(--notion-text); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+            <span>💾</span>
+            <span>Export Data</span>
+        </h2>
+
+        <div style="background: var(--notion-bg); border: 1px solid var(--notion-border); border-radius: 6px; padding: 20px;">
+            <p style="font-size: 14px; color: var(--notion-text); margin-bottom: 16px;">
+                Download all your meeting data as a JSON file
+            </p>
+            <button onclick="exportData()" class="notion-btn notion-btn-secondary" style="padding: 8px 16px;">
+                📥 Export All Data
+            </button>
+        </div>
+    </div>
+
+    <!-- Danger Zone -->
+    <div style="margin-bottom: 40px;">
+        <h2 style="font-size: 18px; font-weight: 600; color: var(--notion-red); margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+            <span>⚠️</span>
+            <span>Danger Zone</span>
+        </h2>
+
+        <div style="background: var(--notion-bg); border: 2px solid var(--notion-red); border-radius: 6px; padding: 20px;">
+            <p style="font-size: 14px; color: var(--notion-text); margin-bottom: 4px; font-weight: 600;">
+                Delete Account
+            </p>
+            <p style="font-size: 13px; color: var(--notion-gray); margin-bottom: 16px;">
+                Permanently delete your account and all associated data. This action cannot be undone.
+            </p>
+            <button onclick="confirmDeleteAccount()" style="padding: 8px 16px; background: var(--notion-red); color: white; border: none; border-radius: 3px; cursor: pointer; font-family: inherit; font-size: 14px; font-weight: 500;">
+                Delete Account
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ============================================================
+    // Load Account Statistics
+    // ============================================================
+    async function loadStats() {
+        try {
+            const response = await fetch('/api/stats');
+            if (response.ok) {
+                const data = await response.json();
+                document.getElementById('total-meetings').textContent = data.total_meetings || 0;
+
+                // Format account created date
+                const createdDate = new Date('{{ user.created_at }}');
+                const options = { year: 'numeric', month: 'short', day: 'numeric' };
+                document.getElementById('account-created').textContent = createdDate.toLocaleDateString('en-US', options);
+            }
+        } catch (error) {
+            console.error('Error loading stats:', error);
+        }
+    }
+
+    loadStats();
+
+    // ============================================================
+    // Change Password
+    // ============================================================
+    document.getElementById('password-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const currentPassword = document.getElementById('current-password').value;
+        const newPassword = document.getElementById('new-password').value;
+        const confirmPassword = document.getElementById('confirm-password').value;
+
+        if (newPassword !== confirmPassword) {
+            alert('New passwords do not match');
+            return;
+        }
+
+        if (newPassword.length < 8) {
+            alert('Password must be at least 8 characters long');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/change-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    current_password: currentPassword,
+                    new_password: newPassword
+                })
+            });
+
+            if (response.ok) {
+                alert('Password updated successfully');
+                document.getElementById('password-form').reset();
+            } else {
+                const data = await response.json();
+                alert(data.error || 'Failed to update password');
+            }
+        } catch (error) {
+            console.error('Error changing password:', error);
+            alert('Failed to update password. Please try again.');
+        }
+    });
+
+    // ============================================================
+    // Export Data
+    // ============================================================
+    async function exportData() {
+        try {
+            const response = await fetch('/api/export');
+            if (response.ok) {
+                const data = await response.json();
+
+                // Create download
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `meeting-data-export-${new Date().toISOString().split('T')[0]}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            } else {
+                alert('Failed to export data');
+            }
+        } catch (error) {
+            console.error('Error exporting data:', error);
+            alert('Failed to export data. Please try again.');
+        }
+    }
+
+    // ============================================================
+    // Delete Account
+    // ============================================================
+    function confirmDeleteAccount() {
+        const confirmed = confirm('⚠️ Are you absolutely sure?\n\nThis will permanently delete your account and all your meetings. This action CANNOT be undone.\n\nType "DELETE" in the next prompt to confirm.');
+
+        if (confirmed) {
+            const verification = prompt('Type "DELETE" to confirm account deletion:');
+
+            if (verification === 'DELETE') {
+                deleteAccount();
+            } else {
+                alert('Account deletion cancelled. The text did not match.');
+            }
+        }
+    }
+
+    async function deleteAccount() {
+        try {
+            const response = await fetch('/api/delete-account', {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                alert('Your account has been deleted. You will now be logged out.');
+                clearTokens();
+                window.location.href = '/auth/login';
+            } else {
+                const data = await response.json();
+                alert(data.error || 'Failed to delete account');
+            }
+        } catch (error) {
+            console.error('Error deleting account:', error);
+            alert('Failed to delete account. Please try again.');
+        }
+    }
+
+    // Update theme text
+    const theme = localStorage.getItem('theme') || 'light';
+    document.getElementById('theme-text').textContent = theme === 'dark' ? 'Switch to Light' : 'Switch to Dark';
+</script>
+{% endblock %}

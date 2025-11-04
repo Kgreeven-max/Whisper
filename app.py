@@ -794,6 +794,141 @@ def calendar_view():
     finally:
         conn.close()
 
+@app.route('/table')
+@jwt_required
+def table_view():
+    """Table view of meetings"""
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute('SELECT * FROM meetings WHERE user_id = %s ORDER BY date DESC', (request.current_user['user_id'],))
+        meetings = c.fetchall()
+        return render_template('notion_table.html', meetings=meetings, user=request.current_user)
+    finally:
+        conn.close()
+
+@app.route('/settings')
+@jwt_required
+def settings():
+    """User settings page"""
+    return render_template('notion_settings.html', user=request.current_user)
+
+@app.route('/api/change-password', methods=['POST'])
+@jwt_required
+def change_password():
+    """Change user password"""
+    data = request.get_json()
+    current_password = data.get('current_password', '')
+    new_password = data.get('new_password', '')
+
+    if not current_password or not new_password:
+        return jsonify({'error': 'Current password and new password are required'}), 400
+
+    if len(new_password) < 8:
+        return jsonify({'error': 'New password must be at least 8 characters'}), 400
+
+    conn = get_db()
+    try:
+        c = conn.cursor()
+        c.execute('SELECT password_hash FROM users WHERE id = %s', (request.current_user['user_id'],))
+        user = c.fetchone()
+
+        if not user or not bcrypt.checkpw(current_password.encode('utf-8'), user['password_hash'].encode('utf-8')):
+            return jsonify({'error': 'Current password is incorrect'}), 401
+
+        # Hash new password
+        new_password_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+        # Update password
+        c.execute('UPDATE users SET password_hash = %s WHERE id = %s',
+                 (new_password_hash, request.current_user['user_id']))
+        conn.commit()
+
+        return jsonify({'success': True})
+    finally:
+        conn.close()
+
+@app.route('/api/export')
+@jwt_required
+def export_data():
+    """Export all user data as JSON"""
+    conn = get_db()
+    try:
+        c = conn.cursor()
+
+        # Get user info
+        c.execute('SELECT username, email, created_at FROM users WHERE id = %s',
+                 (request.current_user['user_id'],))
+        user_info = c.fetchone()
+
+        # Get all meetings
+        c.execute('SELECT * FROM meetings WHERE user_id = %s ORDER BY date DESC',
+                 (request.current_user['user_id'],))
+        meetings = c.fetchall()
+
+        # Format data
+        export_data = {
+            'user': {
+                'username': user_info['username'],
+                'email': user_info['email'],
+                'created_at': user_info['created_at'].isoformat() if user_info['created_at'] else None
+            },
+            'meetings': []
+        }
+
+        for meeting in meetings:
+            meeting_data = {
+                'id': meeting['id'],
+                'title': meeting['title'],
+                'date': meeting['date'].isoformat() if meeting['date'] else None,
+                'attendees': meeting['attendees'],
+                'tags': meeting['tags'],
+                'meeting_type': meeting['meeting_type'],
+                'transcript': meeting['transcript'],
+                'summary': meeting['summary'],
+                'key_points': meeting['key_points'],
+                'action_items': meeting['action_items'],
+                'decisions': meeting['decisions'],
+                'duration': meeting['duration'],
+                'notes': meeting['notes'] if 'notes' in meeting.keys() else None
+            }
+            export_data['meetings'].append(meeting_data)
+
+        return jsonify(export_data)
+    finally:
+        conn.close()
+
+@app.route('/api/delete-account', methods=['DELETE'])
+@jwt_required
+def delete_account():
+    """Delete user account and all associated data"""
+    conn = get_db()
+    try:
+        c = conn.cursor()
+
+        # Get all meeting audio files
+        c.execute('SELECT audio_file FROM meetings WHERE user_id = %s',
+                 (request.current_user['user_id'],))
+        meetings = c.fetchall()
+
+        # Delete audio files from filesystem
+        for meeting in meetings:
+            if meeting['audio_file']:
+                audio_path = os.path.join(app.config['UPLOAD_FOLDER'], meeting['audio_file'])
+                if os.path.exists(audio_path):
+                    try:
+                        os.remove(audio_path)
+                    except Exception as e:
+                        print(f"Error deleting file {audio_path}: {e}")
+
+        # Delete user (CASCADE will delete meetings and refresh tokens)
+        c.execute('DELETE FROM users WHERE id = %s', (request.current_user['user_id'],))
+        conn.commit()
+
+        return jsonify({'success': True})
+    finally:
+        conn.close()
+
 @app.route('/upload', methods=['GET', 'POST'])
 @jwt_required
 def upload_meeting():
