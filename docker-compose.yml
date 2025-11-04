@@ -81,7 +81,7 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-meeting_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-meetings}
       - SECRET_KEY=${SECRET_KEY:?Please set SECRET_KEY in .env file}
     volumes:
-      - ./uploads:/app/uploads
+      - uploads-data:/app/uploads
     depends_on:
       - whisper
       - ollama
@@ -104,3 +104,4 @@ volumes:
   whisper-cache:
   ollama-data:
   postgres-data:
+  uploads-data:

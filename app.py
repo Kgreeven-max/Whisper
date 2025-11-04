@@ -26,28 +26,42 @@ def get_db():
     return conn
 
 def init_db():
-    """Initialize database"""
-    conn = get_db()
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS meetings (
-            id SERIAL PRIMARY KEY,
-            title TEXT NOT NULL,
-            date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            audio_file TEXT,
-            transcript TEXT,
-            summary TEXT,
-            action_items TEXT,
-            key_points TEXT,
-            decisions TEXT,
-            attendees TEXT,
-            duration INTEGER,
-            tags TEXT,
-            status TEXT DEFAULT 'processing'
-        )
-    ''')
-    conn.commit()
-    conn.close()
+    """Initialize database with retry logic"""
+    max_retries = 5
+    retry_delay = 2
+
+    for attempt in range(max_retries):
+        try:
+            conn = get_db()
+            c = conn.cursor()
+            c.execute('''
+                CREATE TABLE IF NOT EXISTS meetings (
+                    id SERIAL PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    audio_file TEXT,
+                    transcript TEXT,
+                    summary TEXT,
+                    action_items TEXT,
+                    key_points TEXT,
+                    decisions TEXT,
+                    attendees TEXT,
+                    duration INTEGER,
+                    tags TEXT,
+                    status TEXT DEFAULT 'processing'
+                )
+            ''')
+            conn.commit()
+            conn.close()
+            print("Database initialized successfully!")
+            return
+        except Exception as e:
+            if attempt < max_retries - 1:
+                print(f"Database connection attempt {attempt + 1} failed: {e}. Retrying in {retry_delay}s...")
+                time.sleep(retry_delay)
+            else:
+                print(f"Failed to initialize database after {max_retries} attempts: {e}")
+                raise
 
 @app.route('/')
 def index():
@@ -639,6 +653,8 @@ def health_check():
     """Health check endpoint"""
     return jsonify({'status': 'healthy', 'timestamp': datetime.datetime.now().isoformat()})
 
+# Initialize database on startup (works with both Flask dev server and Gunicorn)
+init_db()
+
 if __name__ == '__main__':
-    init_db()
     app.run(host='0.0.0.0', port=8080, debug=False)
