@@ -1,0 +1,264 @@
+{% extends "notion_base.html" %}
+
+{% block title %}Table View - Meeting Transcriber{% endblock %}
+
+{% block breadcrumb %}
+<span>📊 Table View</span>
+{% endblock %}
+
+{% block topbar_actions %}
+<a href="/upload" class="topbar-btn primary">New Meeting</a>
+{% endblock %}
+
+{% block content_class %}full-width{% endblock %}
+
+{% block content %}
+<div class="fade-in" style="padding: 40px 60px;">
+    <!-- Page Title -->
+    <h1 class="notion-page-title" style="margin-bottom: 24px;">All Meetings</h1>
+
+    <!-- View Switcher -->
+    <div class="view-switcher">
+        <button class="view-btn" data-view="list" onclick="window.location.href='/'">
+            <span>📋</span>
+            <span>List</span>
+        </button>
+        <button class="view-btn" data-view="calendar" onclick="window.location.href='/calendar'">
+            <span>📅</span>
+            <span>Calendar</span>
+        </button>
+        <button class="view-btn active" data-view="table">
+            <span>📊</span>
+            <span>Table</span>
+        </button>
+    </div>
+
+    <!-- Filters -->
+    <div style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
+        <select id="filter-type" onchange="applyFilters()" style="padding: 6px 12px; border: 1px solid var(--notion-border); border-radius: 3px; font-size: 14px; font-family: inherit; background: white;">
+            <option value="">All Types</option>
+            <option value="standup">📊 Daily Standup</option>
+            <option value="retrospective">🔄 Retrospective</option>
+            <option value="planning">📅 Planning</option>
+            <option value="one-on-one">👥 One-on-One</option>
+            <option value="team-sync">🔄 Team Sync</option>
+            <option value="brainstorming">💡 Brainstorming</option>
+            <option value="review">✅ Review</option>
+            <option value="client-call">📞 Client Call</option>
+            <option value="interview">🎤 Interview</option>
+            <option value="training">📚 Training</option>
+            <option value="general">📝 General</option>
+        </select>
+
+        <select id="filter-status" onchange="applyFilters()" style="padding: 6px 12px; border: 1px solid var(--notion-border); border-radius: 3px; font-size: 14px; font-family: inherit; background: white;">
+            <option value="">All Statuses</option>
+            <option value="completed">Completed</option>
+            <option value="processing">Processing</option>
+            <option value="queued">Queued</option>
+            <option value="error">Error</option>
+        </select>
+
+        <input type="text" id="filter-search" placeholder="Search..." onkeyup="applyFilters()" style="padding: 6px 12px; border: 1px solid var(--notion-border); border-radius: 3px; font-size: 14px; font-family: inherit; flex: 1; max-width: 300px;">
+    </div>
+
+    <!-- Table -->
+    <div style="overflow-x: auto; border: 1px solid var(--notion-border); border-radius: 3px; background: white;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+            <thead>
+                <tr style="background: var(--notion-sidebar-bg); border-bottom: 1px solid var(--notion-border);">
+                    <th style="padding: 12px 16px; text-align: left; font-weight: 600; color: var(--notion-gray); width: 40%;">Title</th>
+                    <th style="padding: 12px 16px; text-align: left; font-weight: 600; color: var(--notion-gray); width: 15%;">Type</th>
+                    <th style="padding: 12px 16px; text-align: left; font-weight: 600; color: var(--notion-gray); width: 15%;">Date</th>
+                    <th style="padding: 12px 16px; text-align: left; font-weight: 600; color: var(--notion-gray); width: 15%;">Attendees</th>
+                    <th style="padding: 12px 16px; text-align: left; font-weight: 600; color: var(--notion-gray); width: 10%;">Status</th>
+                    <th style="padding: 12px 16px; text-align: center; font-weight: 600; color: var(--notion-gray); width: 5%;">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="table-body">
+                {% if meetings %}
+                    {% for meeting in meetings %}
+                    <tr class="table-row"
+                        data-type="{{ meeting[14] }}"
+                        data-status="{{ meeting[13] }}"
+                        data-title="{{ meeting[2]|lower }}"
+                        onclick="window.location.href='/meeting/{{ meeting[0] }}'"
+                        style="border-bottom: 1px solid var(--notion-border); cursor: pointer; transition: background 0.1s ease;">
+                        <td style="padding: 12px 16px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span>
+                                    {% if meeting[14] == 'standup' %}📊
+                                    {% elif meeting[14] == 'retrospective' %}🔄
+                                    {% elif meeting[14] == 'planning' %}📅
+                                    {% elif meeting[14] == 'one-on-one' %}👥
+                                    {% elif meeting[14] == 'team-sync' %}🔄
+                                    {% elif meeting[14] == 'brainstorming' %}💡
+                                    {% elif meeting[14] == 'review' %}✅
+                                    {% elif meeting[14] == 'client-call' %}📞
+                                    {% elif meeting[14] == 'interview' %}🎤
+                                    {% elif meeting[14] == 'training' %}📚
+                                    {% else %}📝
+                                    {% endif %}
+                                </span>
+                                <span style="font-weight: 500;">{{ meeting[2] }}</span>
+                            </div>
+                        </td>
+                        <td style="padding: 12px 16px; color: var(--notion-gray);">
+                            {{ meeting[14]|replace('-', ' ')|title if meeting[14] and meeting[14] != 'general' else '—' }}
+                        </td>
+                        <td style="padding: 12px 16px; color: var(--notion-gray);">
+                            {{ meeting[3].strftime('%b %d, %Y') if meeting[3] else '—' }}
+                        </td>
+                        <td style="padding: 12px 16px; color: var(--notion-gray);">
+                            {{ meeting[10] if meeting[10] else '—' }}
+                        </td>
+                        <td style="padding: 12px 16px;">
+                            <span class="card-badge
+                                {% if meeting[13] == 'completed' %}badge-completed
+                                {% elif 'queued' in meeting[13] %}badge-queued
+                                {% elif meeting[13] == 'processing' %}badge-processing
+                                {% else %}badge-error
+                                {% endif %}"
+                                style="font-size: 11px;">
+                                {{ meeting[13]|title }}
+                            </span>
+                        </td>
+                        <td style="padding: 12px 16px; text-align: center;">
+                            <button onclick="event.stopPropagation(); showActionsMenu({{ meeting[0] }}, event)" style="background: none; border: none; cursor: pointer; font-size: 16px; padding: 4px;">
+                                ⋮
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                <tr>
+                    <td colspan="6" style="padding: 60px; text-align: center;">
+                        <div class="notion-empty">
+                            <div class="notion-empty-icon">🎙️</div>
+                            <div class="notion-empty-title">No meetings yet</div>
+                            <div class="notion-empty-desc">Upload your first meeting recording to get started</div>
+                            <a href="/upload" class="notion-btn notion-btn-primary">Upload Meeting</a>
+                        </div>
+                    </td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Row Count -->
+    <div style="margin-top: 16px; font-size: 13px; color: var(--notion-gray);">
+        Showing <span id="row-count">{{ meetings|length }}</span> meeting(s)
+    </div>
+</div>
+
+<!-- Actions Menu -->
+<div id="actions-menu" style="display: none; position: fixed; background: white; border: 1px solid var(--notion-border); border-radius: 3px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; min-width: 180px;">
+    <div onclick="viewMeeting()" style="padding: 8px 12px; cursor: pointer; font-size: 14px; transition: background 0.1s ease;" onmouseover="this.style.background='var(--notion-hover)'" onmouseout="this.style.background='white'">
+        👁️ View Details
+    </div>
+    <div onclick="regenerateMeeting()" style="padding: 8px 12px; cursor: pointer; font-size: 14px; transition: background 0.1s ease;" onmouseover="this.style.background='var(--notion-hover)'" onmouseout="this.style.background='white'">
+        🔄 Regenerate
+    </div>
+    <div onclick="downloadMeeting()" style="padding: 8px 12px; cursor: pointer; font-size: 14px; transition: background 0.1s ease;" onmouseover="this.style.background='var(--notion-hover)'" onmouseout="this.style.background='white'">
+        📥 Download
+    </div>
+    <div style="border-top: 1px solid var(--notion-border);"></div>
+    <div onclick="deleteMeeting()" style="padding: 8px 12px; cursor: pointer; font-size: 14px; color: var(--notion-red); transition: background 0.1s ease;" onmouseover="this.style.background='var(--notion-hover)'" onmouseout="this.style.background='white'">
+        🗑️ Delete
+    </div>
+</div>
+
+<script>
+let currentMeetingId = null;
+
+// Hover effect for table rows
+document.querySelectorAll('.table-row').forEach(row => {
+    row.addEventListener('mouseenter', () => {
+        row.style.background = 'var(--notion-sidebar-bg)';
+    });
+    row.addEventListener('mouseleave', () => {
+        row.style.background = 'white';
+    });
+});
+
+// Filters
+function applyFilters() {
+    const typeFilter = document.getElementById('filter-type').value.toLowerCase();
+    const statusFilter = document.getElementById('filter-status').value.toLowerCase();
+    const searchFilter = document.getElementById('filter-search').value.toLowerCase();
+
+    const rows = document.querySelectorAll('.table-row');
+    let visibleCount = 0;
+
+    rows.forEach(row => {
+        const type = row.getAttribute('data-type') || '';
+        const status = row.getAttribute('data-status') || '';
+        const title = row.getAttribute('data-title') || '';
+
+        const typeMatch = !typeFilter || type === typeFilter;
+        const statusMatch = !statusFilter || status.includes(statusFilter);
+        const searchMatch = !searchFilter || title.includes(searchFilter);
+
+        if (typeMatch && statusMatch && searchMatch) {
+            row.style.display = '';
+            visibleCount++;
+        } else {
+            row.style.display = 'none';
+        }
+    });
+
+    document.getElementById('row-count').textContent = visibleCount;
+}
+
+// Actions Menu
+function showActionsMenu(meetingId, event) {
+    currentMeetingId = meetingId;
+    const menu = document.getElementById('actions-menu');
+
+    // Position menu near click
+    menu.style.display = 'block';
+    menu.style.left = (event.pageX - 160) + 'px';
+    menu.style.top = event.pageY + 'px';
+}
+
+function viewMeeting() {
+    window.location.href = `/meeting/${currentMeetingId}`;
+}
+
+function regenerateMeeting() {
+    window.location.href = `/meeting/${currentMeetingId}#regenerate`;
+}
+
+function downloadMeeting() {
+    window.location.href = `/download/${currentMeetingId}`;
+}
+
+async function deleteMeeting() {
+    if (!confirm('Delete this meeting? This cannot be undone.')) return;
+
+    try {
+        const response = await fetch(`/api/meeting/${currentMeetingId}/delete`, { method: 'DELETE' });
+        if (response.ok) {
+            location.reload();
+        } else {
+            alert('Failed to delete');
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Failed to delete');
+    }
+}
+
+// Close menu when clicking outside
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('#actions-menu')) {
+        document.getElementById('actions-menu').style.display = 'none';
+    }
+});
+
+// Auto-refresh processing meetings
+if (document.querySelectorAll('.badge-processing, .badge-queued').length > 0) {
+    setTimeout(() => location.reload(), 5000);
+}
+</script>
+{% endblock %}
