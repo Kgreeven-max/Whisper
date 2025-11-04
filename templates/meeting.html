@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+
+{% block title %}{{ meeting.title }} - Meeting Transcriber{% endblock %}
+
+{% block extra_css %}
+<style>
+    .meeting-header-section {
+        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+        color: white;
+        padding: 2rem;
+        border-radius: 0.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .meeting-title-main {
+        font-size: 2rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+    }
+
+    .meeting-meta-main {
+        display: flex;
+        gap: 2rem;
+        flex-wrap: wrap;
+        opacity: 0.95;
+    }
+
+    .section {
+        background: var(--card-bg);
+        border-radius: 0.5rem;
+        padding: 1.5rem;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        margin-bottom: 1.5rem;
+    }
+
+    .section-title {
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        color: var(--text);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .section-content {
+        color: var(--text);
+        line-height: 1.8;
+    }
+
+    .list-item {
+        padding: 0.75rem;
+        background: var(--bg);
+        border-radius: 0.375rem;
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: start;
+        gap: 0.75rem;
+    }
+
+    .list-item-icon {
+        flex-shrink: 0;
+        margin-top: 0.125rem;
+    }
+
+    .action-item {
+        display: flex;
+        align-items: start;
+        gap: 0.75rem;
+        padding: 0.75rem;
+        background: var(--bg);
+        border-radius: 0.375rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .action-checkbox {
+        width: 20px;
+        height: 20px;
+        margin-top: 0.125rem;
+        cursor: pointer;
+    }
+
+    .transcript-section {
+        background: #f8fafc;
+        border-left: 4px solid var(--primary);
+        padding: 1.5rem;
+        border-radius: 0.375rem;
+        font-family: 'Georgia', serif;
+        line-height: 1.8;
+        white-space: pre-wrap;
+    }
+
+    .actions-bar {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 2rem;
+        flex-wrap: wrap;
+    }
+
+    .processing-notice {
+        background: #fef3c7;
+        border-left: 4px solid var(--warning);
+        padding: 1.5rem;
+        border-radius: 0.375rem;
+        margin-bottom: 2rem;
+    }
+
+    .empty-section {
+        color: var(--text-light);
+        font-style: italic;
+        padding: 1rem;
+        text-align: center;
+        background: var(--bg);
+        border-radius: 0.375rem;
+    }
+
+    .tag-list {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-top: 0.5rem;
+    }
+
+    .tag-item {
+        padding: 0.25rem 0.75rem;
+        background: var(--bg);
+        border-radius: 0.25rem;
+        font-size: 0.875rem;
+        color: var(--text);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="actions-bar">
+    <a href="/" class="btn btn-secondary">← Back to Dashboard</a>
+    <a href="/download/{{ meeting.id }}" class="btn btn-primary">📥 Download as Markdown</a>
+    <form action="/meeting/{{ meeting.id }}/delete" method="POST" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this meeting?');">
+        <button type="submit" class="btn btn-danger">🗑️ Delete</button>
+    </form>
+</div>
+
+{% if meeting.status == 'processing' %}
+<div class="processing-notice">
+    <h3>⏳ Processing in progress</h3>
+    <p class="mt-1">Your meeting is currently being transcribed and analyzed. This page will automatically refresh when processing is complete.</p>
+    <div class="spinner"></div>
+</div>
+{% endif %}
+
+{% if meeting.status == 'error' %}
+<div class="alert alert-danger">
+    <h3>❌ Processing Error</h3>
+    <p class="mt-1">There was an error processing this meeting. Please try uploading again or contact support.</p>
+</div>
+{% endif %}
+
+<div class="meeting-header-section">
+    <h1 class="meeting-title-main">{{ meeting.title }}</h1>
+    <div class="meeting-meta-main">
+        <span>📅 {{ meeting.date }}</span>
+        {% if meeting.attendees %}
+        <span>👥 {{ meeting.attendees }}</span>
+        {% endif %}
+        {% if meeting.status %}
+        <span>
+            {% if meeting.status == 'completed' %}
+            ✅ Completed
+            {% elif meeting.status == 'processing' %}
+            ⏳ Processing
+            {% else %}
+            ❌ Error
+            {% endif %}
+        </span>
+        {% endif %}
+    </div>
+
+    {% if meeting.tags %}
+    <div class="tag-list">
+        {% for tag in meeting.tags.split(',') %}
+        <span class="tag-item">{{ tag.strip() }}</span>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+{% if meeting.status == 'completed' %}
+<div class="section">
+    <h2 class="section-title">📝 Summary</h2>
+    <div class="section-content">
+        {% if meeting.summary %}
+        {{ meeting.summary }}
+        {% else %}
+        <p class="empty-section">No summary available</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="section">
+    <h2 class="section-title">💡 Key Discussion Points</h2>
+    <div class="section-content">
+        {% if meeting.key_points %}
+            {% for point in meeting.key_points %}
+            <div class="list-item">
+                <span class="list-item-icon">•</span>
+                <span>{{ point }}</span>
+            </div>
+            {% endfor %}
+        {% else %}
+        <p class="empty-section">No key points extracted</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="section">
+    <h2 class="section-title">✅ Action Items</h2>
+    <div class="section-content">
+        {% if meeting.action_items %}
+            {% for item in meeting.action_items %}
+            <div class="action-item">
+                <input type="checkbox" class="action-checkbox">
+                <span>{{ item }}</span>
+            </div>
+            {% endfor %}
+        {% else %}
+        <p class="empty-section">No action items identified</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="section">
+    <h2 class="section-title">🎯 Decisions</h2>
+    <div class="section-content">
+        {% if meeting.decisions %}
+            {% for decision in meeting.decisions %}
+            <div class="list-item">
+                <span class="list-item-icon">→</span>
+                <span>{{ decision }}</span>
+            </div>
+            {% endfor %}
+        {% else %}
+        <p class="empty-section">No decisions recorded</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="section">
+    <h2 class="section-title">📄 Full Transcript</h2>
+    <div class="transcript-section">
+        {% if meeting.transcript %}
+        {{ meeting.transcript }}
+        {% else %}
+        <p class="empty-section">No transcript available</p>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<script>
+    // Auto-refresh if processing
+    {% if meeting.status == 'processing' %}
+    setTimeout(() => {
+        location.reload();
+    }, 10000); // Refresh every 10 seconds
+    {% endif %}
+
+    // Save action item state
+    document.querySelectorAll('.action-checkbox').forEach(checkbox => {
+        const itemText = checkbox.nextElementSibling.textContent;
+        const storageKey = 'action-{{ meeting.id }}-' + itemText.substring(0, 20);
+
+        // Load saved state
+        if (localStorage.getItem(storageKey) === 'checked') {
+            checkbox.checked = true;
+        }
+
+        // Save on change
+        checkbox.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                localStorage.setItem(storageKey, 'checked');
+            } else {
+                localStorage.removeItem(storageKey);
+            }
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Meeting - Meeting Transcriber{% endblock %}
+
+{% block extra_css %}
+<style>
+    .upload-container {
+        max-width: 700px;
+        margin: 2rem auto;
+    }
+
+    .upload-zone {
+        border: 2px dashed var(--border);
+        border-radius: 0.5rem;
+        padding: 3rem 2rem;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.2s;
+        background: var(--card-bg);
+    }
+
+    .upload-zone:hover,
+    .upload-zone.drag-over {
+        border-color: var(--primary);
+        background: #f0f7ff;
+    }
+
+    .upload-icon {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+    }
+
+    .file-input {
+        display: none;
+    }
+
+    .file-info {
+        margin-top: 1rem;
+        padding: 1rem;
+        background: var(--bg);
+        border-radius: 0.375rem;
+        display: none;
+    }
+
+    .file-info.show {
+        display: block;
+    }
+
+    .progress-bar {
+        width: 100%;
+        height: 8px;
+        background: var(--border);
+        border-radius: 4px;
+        overflow: hidden;
+        margin-top: 1rem;
+        display: none;
+    }
+
+    .progress-bar.show {
+        display: block;
+    }
+
+    .progress-fill {
+        height: 100%;
+        background: var(--primary);
+        width: 0%;
+        transition: width 0.3s;
+    }
+
+    .supported-formats {
+        margin-top: 1.5rem;
+        padding: 1rem;
+        background: var(--bg);
+        border-radius: 0.375rem;
+        font-size: 0.875rem;
+        color: var(--text-light);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="upload-container">
+    <div class="card">
+        <h1 class="card-title">Upload Meeting Recording</h1>
+
+        <form id="upload-form" enctype="multipart/form-data">
+            <div class="form-group">
+                <label class="form-label">Meeting Title *</label>
+                <input
+                    type="text"
+                    name="title"
+                    class="form-input"
+                    placeholder="e.g., Q4 Planning Meeting"
+                    required
+                >
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Attendees</label>
+                <input
+                    type="text"
+                    name="attendees"
+                    class="form-input"
+                    placeholder="e.g., John, Sarah, Mike"
+                >
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Tags</label>
+                <input
+                    type="text"
+                    name="tags"
+                    class="form-input"
+                    placeholder="e.g., planning, quarterly, strategy"
+                >
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Audio File *</label>
+                <div class="upload-zone" id="upload-zone">
+                    <div class="upload-icon">🎙️</div>
+                    <h3>Drag & drop your audio file here</h3>
+                    <p class="text-muted mt-1">or click to browse</p>
+                    <input
+                        type="file"
+                        name="audio"
+                        id="file-input"
+                        class="file-input"
+                        accept="audio/*,video/*"
+                        required
+                    >
+                </div>
+
+                <div class="file-info" id="file-info">
+                    <strong>Selected file:</strong>
+                    <p class="text-muted mt-1" id="file-name"></p>
+                    <p class="text-muted" id="file-size"></p>
+                </div>
+
+                <div class="progress-bar" id="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+
+                <div class="supported-formats">
+                    <strong>Supported formats:</strong> MP3, WAV, M4A, MP4, FLAC, OGG
+                    <br>
+                    <strong>Maximum size:</strong> 500 MB
+                </div>
+            </div>
+
+            <div class="alert alert-info">
+                <strong>Processing time:</strong> Depending on the length of your recording, processing may take several minutes. You can navigate away and check back later.
+            </div>
+
+            <button type="submit" class="btn btn-primary" id="submit-btn">
+                Upload & Process
+            </button>
+            <a href="/" class="btn btn-secondary">Cancel</a>
+        </form>
+    </div>
+</div>
+
+<script>
+    const uploadZone = document.getElementById('upload-zone');
+    const fileInput = document.getElementById('file-input');
+    const fileInfo = document.getElementById('file-info');
+    const fileName = document.getElementById('file-name');
+    const fileSize = document.getElementById('file-size');
+    const uploadForm = document.getElementById('upload-form');
+    const submitBtn = document.getElementById('submit-btn');
+    const progressBar = document.getElementById('progress-bar');
+    const progressFill = document.getElementById('progress-fill');
+
+    // Click to upload
+    uploadZone.addEventListener('click', () => {
+        fileInput.click();
+    });
+
+    // Drag and drop
+    uploadZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadZone.classList.add('drag-over');
+    });
+
+    uploadZone.addEventListener('dragleave', () => {
+        uploadZone.classList.remove('drag-over');
+    });
+
+    uploadZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadZone.classList.remove('drag-over');
+
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            fileInput.files = files;
+            displayFileInfo(files[0]);
+        }
+    });
+
+    // File selection
+    fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            displayFileInfo(file);
+        }
+    });
+
+    function displayFileInfo(file) {
+        fileName.textContent = file.name;
+        fileSize.textContent = formatFileSize(file.size);
+        fileInfo.classList.add('show');
+    }
+
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    }
+
+    // Form submission
+    uploadForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const formData = new FormData(uploadForm);
+
+        // Disable submit button
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Uploading...';
+        progressBar.classList.add('show');
+
+        try {
+            const xhr = new XMLHttpRequest();
+
+            // Track upload progress
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable) {
+                    const percentComplete = (e.loaded / e.total) * 100;
+                    progressFill.style.width = percentComplete + '%';
+                }
+            });
+
+            xhr.addEventListener('load', () => {
+                if (xhr.status === 200 || xhr.status === 302) {
+                    // Extract meeting ID from redirect URL or response
+                    window.location.href = xhr.responseURL || '/';
+                } else {
+                    alert('Upload failed: ' + xhr.statusText);
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Upload & Process';
+                    progressBar.classList.remove('show');
+                }
+            });
+
+            xhr.addEventListener('error', () => {
+                alert('Upload failed. Please try again.');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Upload & Process';
+                progressBar.classList.remove('show');
+            });
+
+            xhr.open('POST', '/upload');
+            xhr.send(formData);
+
+        } catch (error) {
+            console.error('Upload error:', error);
+            alert('Upload failed. Please try again.');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Upload & Process';
+            progressBar.classList.remove('show');
+        }
+    });
+</script>
+{% endblock %}
