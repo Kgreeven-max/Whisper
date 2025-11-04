@@ -18,7 +18,7 @@
         }
 
         :root {
-            /* Notion Colors */
+            /* Notion Light Colors */
             --notion-bg: #ffffff;
             --notion-sidebar-bg: #f7f6f3;
             --notion-text: #37352f;
@@ -38,6 +38,102 @@
             --topbar-height: 45px;
         }
 
+        /* Dark Theme */
+        [data-theme="dark"] {
+            --notion-bg: #191919;
+            --notion-sidebar-bg: #252525;
+            --notion-text: #e9e9e7;
+            --notion-text-light: #9b9a97;
+            --notion-border: #3a3a3a;
+            --notion-hover: #2f2f2f;
+            --notion-blue: #3b82f6;
+            --notion-blue-hover: #2563eb;
+            --notion-gray: #9b9a97;
+        }
+
+        [data-theme="dark"] .notion-card {
+            background: #252525;
+        }
+
+        [data-theme="dark"] .notion-card:hover {
+            background: #2f2f2f;
+        }
+
+        [data-theme="dark"] .calendar-day {
+            background: #252525;
+        }
+
+        [data-theme="dark"] .calendar-day.other-month {
+            background: #1e1e1e;
+        }
+
+        [data-theme="dark"] .view-btn.active {
+            background: #2f2f2f;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        }
+
+        [data-theme="dark"] .badge-queued {
+            background: #3a3020;
+            color: #ffc900;
+        }
+
+        [data-theme="dark"] .badge-processing {
+            background: #1e3a5f;
+            color: #60a5fa;
+        }
+
+        [data-theme="dark"] .badge-completed {
+            background: #1e3a2e;
+            color: #4ade80;
+        }
+
+        [data-theme="dark"] .badge-error {
+            background: #3a1e1e;
+            color: #f87171;
+        }
+
+        [data-theme="dark"] .notion-empty-icon {
+            opacity: 0.2;
+        }
+
+        [data-theme="dark"] .view-switcher {
+            background: #1e1e1e;
+        }
+
+        [data-theme="dark"] .calendar-header {
+            background: #1e1e1e;
+        }
+
+        /* Dark mode for inputs and interactive elements */
+        [data-theme="dark"] input,
+        [data-theme="dark"] select,
+        [data-theme="dark"] textarea {
+            background: #252525;
+            border-color: var(--notion-border);
+            color: var(--notion-text);
+        }
+
+        [data-theme="dark"] input:focus,
+        [data-theme="dark"] select:focus,
+        [data-theme="dark"] textarea:focus {
+            background: #2f2f2f;
+            border-color: var(--notion-blue);
+        }
+
+        [data-theme="dark"] .notion-btn-secondary {
+            background: #2f2f2f;
+        }
+
+        [data-theme="dark"] .notion-btn-secondary:hover {
+            background: #3a3a3a;
+        }
+
+        /* Dark mode for modals */
+        [data-theme="dark"] .modal-content {
+            background: #252525;
+            border-color: var(--notion-border);
+        }
+
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: var(--notion-bg);
@@ -45,6 +141,7 @@
             line-height: 1.5;
             font-size: 14px;
             overflow-x: hidden;
+            transition: background 0.2s ease, color 0.2s ease;
         }
 
         /* Layout */
@@ -62,7 +159,7 @@
             display: flex;
             flex-direction: column;
             flex-shrink: 0;
-            transition: transform 0.2s ease;
+            transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
         }
 
         .notion-sidebar.collapsed {
@@ -151,6 +248,29 @@
         .sidebar-footer {
             padding: 12px 14px;
             border-top: 1px solid var(--notion-border);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .theme-toggle {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: background 0.1s ease;
+            font-size: 13px;
+            color: var(--notion-text);
+        }
+
+        .theme-toggle:hover {
+            background: var(--notion-hover);
+        }
+
+        .theme-toggle-icon {
+            font-size: 16px;
         }
 
         /* Main Content */
@@ -172,6 +292,7 @@
             background: var(--notion-bg);
             position: relative;
             z-index: 10;
+            transition: background 0.2s ease, border-color 0.2s ease;
         }
 
         .topbar-left {
@@ -309,7 +430,7 @@
             padding: 12px 16px;
             margin-bottom: 8px;
             cursor: pointer;
-            transition: all 0.1s ease;
+            transition: all 0.1s ease, background 0.2s ease, border-color 0.2s ease;
             position: relative;
         }
 
@@ -656,6 +777,10 @@
             </div>
 
             <div class="sidebar-footer">
+                <div class="theme-toggle" onclick="toggleTheme()">
+                    <span>Theme</span>
+                    <span class="theme-toggle-icon" id="theme-icon">🌙</span>
+                </div>
                 <button onclick="logout()" class="notion-btn notion-btn-ghost" style="width: 100%; justify-content: center;">
                     Logout
                 </button>
@@ -797,6 +922,35 @@
         function toggleSidebar() {
             document.getElementById('sidebar').classList.toggle('collapsed');
         }
+
+        // ============================================================
+        // Theme Management
+        // ============================================================
+        function getTheme() {
+            return localStorage.getItem('theme') || 'light';
+        }
+
+        function setTheme(theme) {
+            localStorage.setItem('theme', theme);
+            document.documentElement.setAttribute('data-theme', theme);
+            updateThemeIcon(theme);
+        }
+
+        function updateThemeIcon(theme) {
+            const icon = document.getElementById('theme-icon');
+            if (icon) {
+                icon.textContent = theme === 'dark' ? '☀️' : '🌙';
+            }
+        }
+
+        function toggleTheme() {
+            const currentTheme = getTheme();
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            setTheme(newTheme);
+        }
+
+        // Apply saved theme on page load
+        setTheme(getTheme());
 
         // Set user initials in avatar
         const username = '{{ user.username if user else "U" }}';
