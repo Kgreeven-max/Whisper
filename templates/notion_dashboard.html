@@ -346,15 +346,23 @@ function drop(event) {
     }
 }
 
-function saveOrder() {
-    // Optional: Save the new order to the backend
+async function saveOrder() {
+    // Save the new order to the backend
     const cards = document.querySelectorAll('.notion-card');
     const order = Array.from(cards).map((card, index) => ({
-        id: card.getAttribute('data-meeting-id'),
+        id: parseInt(card.getAttribute('data-meeting-id')),
         order: index
     }));
-    console.log('New order:', order);
-    // TODO: Send to API endpoint to save display_order
+
+    try {
+        await fetch('/api/meetings/reorder', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ order })
+        });
+    } catch (error) {
+        console.error('Error saving order:', error);
+    }
 }
 
 // ============================================================

@@ -1335,6 +1335,36 @@ def update_meeting_notes(meeting_id):
     finally:
         conn.close()
 
+@app.route('/api/meetings/reorder', methods=['POST'])
+@jwt_required
+def reorder_meetings():
+    """Update display order for meetings (drag and drop)"""
+    order_data = request.json.get('order', [])
+
+    if not order_data:
+        return jsonify({'error': 'No order data provided'}), 400
+
+    conn = get_db()
+    try:
+        c = conn.cursor()
+
+        # Update display order for each meeting
+        for item in order_data:
+            meeting_id = item.get('id')
+            display_order = item.get('order')
+
+            if meeting_id is not None and display_order is not None:
+                c.execute('''
+                    UPDATE meetings
+                    SET display_order = %s
+                    WHERE id = %s AND user_id = %s
+                ''', (display_order, meeting_id, request.current_user['user_id']))
+
+        conn.commit()
+        return jsonify({'success': True})
+    finally:
+        conn.close()
+
 @app.route('/api/meeting/<int:meeting_id>/regenerate', methods=['POST'])
 @jwt_required
 def regenerate_meeting_analysis(meeting_id):
