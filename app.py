@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory
+from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory, make_response
 import requests
 import os
 import json
@@ -165,6 +165,35 @@ def init_db_pool():
             dsn=app.config['DATABASE_URL']
         )
 
+class PooledConnection:
+    """Wrapper for database connection that returns to pool on close"""
+    def __init__(self, pool, conn):
+        self._pool = pool
+        self._conn = conn
+        self._conn.cursor_factory = psycopg2.extras.DictCursor
+
+    def cursor(self, *args, **kwargs):
+        return self._conn.cursor(*args, **kwargs)
+
+    def commit(self):
+        return self._conn.commit()
+
+    def rollback(self):
+        return self._conn.rollback()
+
+    def close(self):
+        """Return connection to pool instead of closing"""
+        if self._pool and self._conn:
+            self._pool.putconn(self._conn)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is not None:
+            self.rollback()
+        self.close()
+
 def get_db():
     """Get database connection from pool
     Note: conn.close() will return connection to pool, not actually close it
@@ -176,16 +205,8 @@ def get_db():
     # Get connection from pool
     raw_conn = db_pool.getconn()
 
-    # Wrap close() to return to pool instead of closing
-    original_close = raw_conn.close
-    def pool_close():
-        global db_pool
-        if db_pool and raw_conn:
-            db_pool.putconn(raw_conn)
-    raw_conn.close = pool_close
-
-    raw_conn.cursor_factory = psycopg2.extras.DictCursor
-    return raw_conn
+    # Wrap in pooled connection
+    return PooledConnection(db_pool, raw_conn)
 
 def init_db():
     """Initialize database with retry logic"""
@@ -478,7 +499,8 @@ def register():
         access_token = generate_access_token(user_id)
         refresh_token = generate_refresh_token(user_id)
 
-        return jsonify({
+        # Create response with tokens in cookies
+        response = make_response(jsonify({
             'message': 'User registered successfully',
             'access_token': access_token,
             'refresh_token': refresh_token,
@@ -487,7 +509,25 @@ def register():
                 'username': username,
                 'email': email
             }
-        }), 201
+        }), 201)
+
+        # Set httpOnly cookies for security
+        response.set_cookie(
+            'access_token',
+            access_token,
+            max_age=app.config['JWT_ACCESS_TOKEN_EXPIRES'],
+            httponly=True,
+            samesite='Lax'
+        )
+        response.set_cookie(
+            'refresh_token',
+            refresh_token,
+            max_age=app.config['JWT_REFRESH_TOKEN_EXPIRES'],
+            httponly=True,
+            samesite='Lax'
+        )
+
+        return response
 
     except psycopg2.errors.UniqueViolation:
         return jsonify({'error': 'Username or email already exists'}), 409
@@ -530,7 +570,8 @@ def login():
         access_token = generate_access_token(user['id'])
         refresh_token = generate_refresh_token(user['id'])
 
-        return jsonify({
+        # Create response with tokens in cookies
+        response = make_response(jsonify({
             'message': 'Login successful',
             'access_token': access_token,
             'refresh_token': refresh_token,
@@ -539,7 +580,25 @@ def login():
                 'username': user['username'],
                 'email': user['email']
             }
-        }), 200
+        }), 200)
+
+        # Set httpOnly cookies for security
+        response.set_cookie(
+            'access_token',
+            access_token,
+            max_age=app.config['JWT_ACCESS_TOKEN_EXPIRES'],
+            httponly=True,
+            samesite='Lax'
+        )
+        response.set_cookie(
+            'refresh_token',
+            refresh_token,
+            max_age=app.config['JWT_REFRESH_TOKEN_EXPIRES'],
+            httponly=True,
+            samesite='Lax'
+        )
+
+        return response
 
     except Exception as e:
         print(f"Login error: {e}")
@@ -600,14 +659,15 @@ def refresh():
 @jwt_required
 def logout():
     """Logout user and revoke refresh tokens"""
-    data = request.json
+    # Get refresh token from cookie
+    refresh_token = request.cookies.get('refresh_token')
 
-    if data and data.get('refresh_token'):
+    if refresh_token:
         # Revoke specific refresh token
         conn = get_db()
         try:
             c = conn.cursor()
-            c.execute('DELETE FROM refresh_tokens WHERE token = %s', (data['refresh_token'],))
+            c.execute('DELETE FROM refresh_tokens WHERE token = %s', (refresh_token,))
             conn.commit()
         finally:
             conn.close()
@@ -621,7 +681,12 @@ def logout():
         finally:
             conn.close()
 
-    return jsonify({'message': 'Logged out successfully'}), 200
+    # Create response and clear cookies
+    response = make_response(jsonify({'message': 'Logged out successfully'}), 200)
+    response.set_cookie('access_token', '', max_age=0)
+    response.set_cookie('refresh_token', '', max_age=0)
+
+    return response
 
 @app.route('/auth/me', methods=['GET'])
 @jwt_required
@@ -2180,6 +2245,30 @@ def queue_status():
         },
         'user_jobs': user_active_jobs
     }), 200
+
+@app.route('/downloads/<path:filename>')
+def download_client_file(filename):
+    """Download client files"""
+    client_dir = os.path.join(os.path.dirname(__file__), 'client')
+
+    # Security: only allow specific files
+    allowed_files = [
+        'audio_capture.py',
+        'requirements.txt',
+        'install_linux.sh',
+        'install_macos.sh',
+        'install_windows.bat',
+        'meeting_monitor.py',
+        'calendar_integration.py'
+    ]
+
+    if filename not in allowed_files:
+        return jsonify({'error': 'File not found'}), 404
+
+    try:
+        return send_from_directory(client_dir, filename, as_attachment=True)
+    except FileNotFoundError:
+        return jsonify({'error': 'File not found'}), 404
 
 @app.route('/health')
 def health_check():

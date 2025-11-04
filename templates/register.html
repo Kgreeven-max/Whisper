@@ -359,10 +359,7 @@
                 const result = await response.json();
 
                 if (response.ok) {
-                    // Store tokens in localStorage
-                    localStorage.setItem('access_token', result.access_token);
-                    localStorage.setItem('refresh_token', result.refresh_token);
-
+                    // Tokens are now set as httpOnly cookies by the server
                     // Show success and redirect
                     showAlert('Account created successfully! Redirecting...', 'success');
 
