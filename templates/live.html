@@ -266,6 +266,28 @@
     }
 
     async function startRecording() {
+        // Check if browser supports mediaDevices
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            const isHTTP = window.location.protocol === 'http:';
+            const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+            if (isHTTP && !isLocalhost) {
+                alert('Error: Web recording requires HTTPS\n\n' +
+                      'Your browser requires a secure HTTPS connection to access the microphone.\n\n' +
+                      'Please use one of these options:\n' +
+                      '1. Download and use the Desktop Client (recommended)\n' +
+                      '2. Contact your administrator to enable HTTPS on this server\n\n' +
+                      'Desktop client files are available above.');
+                return;
+            } else {
+                alert('Error: Your browser does not support audio recording.\n\n' +
+                      'Please use:\n' +
+                      '1. Desktop Client (recommended)\n' +
+                      '2. A modern browser like Chrome, Firefox, or Edge');
+                return;
+            }
+        }
+
         const title = prompt('Enter meeting title:', 'Live Meeting');
         if (!title) return;
 
@@ -274,6 +296,7 @@
             const response = await fetch('/api/live/start', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
+                credentials: 'include',
                 body: JSON.stringify({title: title})
             });
 
@@ -345,6 +368,7 @@
         try {
             const response = await fetch('/api/live/chunk', {
                 method: 'POST',
+                credentials: 'include',
                 body: formData
             });
 
@@ -408,6 +432,7 @@
             const response = await fetch('/api/live/stop', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
+                credentials: 'include',
                 body: JSON.stringify({session_id: sessionId})
             });
 

@@ -192,6 +192,7 @@ async function saveTitle(element) {
         const response = await fetch(`/api/meeting/${meetingId}/title`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body: JSON.stringify({ title: newTitle })
         });
 
@@ -212,6 +213,7 @@ async function saveNotes(element) {
         const response = await fetch(`/api/meeting/${meetingId}/notes`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body: JSON.stringify({ notes: newNotes })
         });
 
@@ -247,6 +249,7 @@ async function regenerateMeeting() {
         const response = await fetch(`/api/meeting/${currentRegenerateMeetingId}/regenerate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body: JSON.stringify({ meeting_type: newType })
         });
 
@@ -279,7 +282,8 @@ async function deleteMeeting(meetingId) {
 
     try {
         const response = await fetch(`/api/meeting/${meetingId}/delete`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            credentials: 'include'
         });
 
         if (response.ok) {
@@ -358,6 +362,7 @@ async function saveOrder() {
         await fetch('/api/meetings/reorder', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
             body: JSON.stringify({ order })
         });
     } catch (error) {
@@ -386,6 +391,7 @@ searchInput.addEventListener('input', (e) => {
             const response = await fetch('/api/search', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
                 body: JSON.stringify({ query })
             });
 

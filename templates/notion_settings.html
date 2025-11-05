@@ -248,7 +248,7 @@
     // ============================================================
     async function loadStats() {
         try {
-            const response = await fetch('/api/stats');
+            const response = await fetch('/api/stats', { credentials: 'include' });
             if (response.ok) {
                 const data = await response.json();
                 document.getElementById('total-meetings').textContent = data.total_meetings || 0;
@@ -288,7 +288,9 @@
         try {
             const response = await fetch('/api/change-password', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                headers: {
+                'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     current_password: currentPassword,
                     new_password: newPassword
@@ -477,6 +479,7 @@
             // Save token via API
             fetch('/api/calendar/save-token', {
                 method: 'POST',
+                credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     access_token: token,

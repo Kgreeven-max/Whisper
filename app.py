@@ -395,6 +395,10 @@ def jwt_required(f):
             token = request.cookies.get('access_token')
 
         if not token:
+            # For browser requests (HTML), redirect to login
+            if request.accept_mimetypes.accept_html:
+                return redirect(url_for('login'))
+            # For API requests (JSON), return error
             return jsonify({'error': 'Authorization token required'}), 401
 
         try:
@@ -425,11 +429,17 @@ def jwt_required(f):
                 conn.close()
 
         except jwt.ExpiredSignatureError:
+            if request.accept_mimetypes.accept_html:
+                return redirect(url_for('login'))
             return jsonify({'error': 'Token has expired'}), 401
         except jwt.InvalidTokenError:
+            if request.accept_mimetypes.accept_html:
+                return redirect(url_for('login'))
             return jsonify({'error': 'Invalid token'}), 401
         except Exception as e:
             print(f"JWT verification error: {e}")
+            if request.accept_mimetypes.accept_html:
+                return redirect(url_for('login'))
             return jsonify({'error': 'Token verification failed'}), 401
 
         return f(*args, **kwargs)
@@ -514,11 +524,15 @@ def register():
         }), 201)
 
         # Set httpOnly cookies for security
+        # Detect if request came via HTTPS (from X-Forwarded-Proto header set by nginx/Cloudflare)
+        is_secure = request.headers.get('X-Forwarded-Proto', 'http') == 'https'
+
         response.set_cookie(
             'access_token',
             access_token,
             max_age=app.config['JWT_ACCESS_TOKEN_EXPIRES'],
             httponly=True,
+            secure=is_secure,
             samesite='Lax'
         )
         response.set_cookie(
@@ -526,6 +540,7 @@ def register():
             refresh_token,
             max_age=app.config['JWT_REFRESH_TOKEN_EXPIRES'],
             httponly=True,
+            secure=is_secure,
             samesite='Lax'
         )
 
@@ -585,11 +600,15 @@ def login():
         }), 200)
 
         # Set httpOnly cookies for security
+        # Detect if request came via HTTPS (from X-Forwarded-Proto header set by nginx/Cloudflare)
+        is_secure = request.headers.get('X-Forwarded-Proto', 'http') == 'https'
+
         response.set_cookie(
             'access_token',
             access_token,
             max_age=app.config['JWT_ACCESS_TOKEN_EXPIRES'],
             httponly=True,
+            secure=is_secure,
             samesite='Lax'
         )
         response.set_cookie(
@@ -597,6 +616,7 @@ def login():
             refresh_token,
             max_age=app.config['JWT_REFRESH_TOKEN_EXPIRES'],
             httponly=True,
+            secure=is_secure,
             samesite='Lax'
         )
 
@@ -684,9 +704,12 @@ def logout():
             conn.close()
 
     # Create response and clear cookies
+    # Detect if request came via HTTPS
+    is_secure = request.headers.get('X-Forwarded-Proto', 'http') == 'https'
+
     response = make_response(jsonify({'message': 'Logged out successfully'}), 200)
-    response.set_cookie('access_token', '', max_age=0)
-    response.set_cookie('refresh_token', '', max_age=0)
+    response.set_cookie('access_token', '', max_age=0, secure=is_secure, samesite='Lax')
+    response.set_cookie('refresh_token', '', max_age=0, secure=is_secure, samesite='Lax')
 
     return response
 
@@ -780,17 +803,47 @@ def reset_password():
 # ============================================================
 
 @app.route('/')
-@jwt_required
 def index():
     """Main dashboard showing all meetings for current user"""
-    conn = get_db()
+    # Check if user is authenticated
+    token = request.cookies.get('access_token')
+
+    if not token:
+        # Not authenticated - redirect to login
+        return redirect(url_for('login'))
+
     try:
-        c = conn.cursor()
-        c.execute('SELECT * FROM meetings WHERE user_id = %s ORDER BY display_order, date DESC LIMIT 50', (request.current_user['user_id'],))
-        meetings = c.fetchall()
-        return render_template('notion_dashboard.html', meetings=meetings, user=request.current_user)
-    finally:
-        conn.close()
+        # Verify token
+        payload = jwt.decode(token, app.config['JWT_SECRET'], algorithms=['HS256'])
+
+        if payload.get('type') != 'access':
+            return redirect(url_for('login'))
+
+        # Get user from database
+        conn = get_db()
+        try:
+            c = conn.cursor()
+            c.execute('SELECT id, username, email FROM users WHERE id = %s', (payload['user_id'],))
+            user = c.fetchone()
+
+            if not user:
+                return redirect(url_for('login'))
+
+            # Get meetings
+            c.execute('SELECT * FROM meetings WHERE user_id = %s ORDER BY display_order, date DESC LIMIT 50', (user['id'],))
+            meetings = c.fetchall()
+
+            return render_template('notion_dashboard.html', meetings=meetings, user={
+                'user_id': user['id'],
+                'username': user['username'],
+                'email': user['email']
+            })
+        finally:
+            conn.close()
+
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError, Exception):
+        # Token invalid or expired - redirect to login
+        return redirect(url_for('login'))
 
 @app.route('/calendar')
 @jwt_required
@@ -1333,6 +1386,12 @@ def upload_meeting():
                       'training', 'general']
         if meeting_type not in valid_types:
             meeting_type = 'auto-detect'
+
+        # Validate file extension
+        ALLOWED_EXTENSIONS = {'.mp3', '.wav', '.m4a', '.webm', '.ogg', '.flac', '.aac', '.mp4'}
+        file_ext = os.path.splitext(file.filename)[1].lower()
+        if not file_ext or file_ext not in ALLOWED_EXTENSIONS:
+            return jsonify({'error': f'Invalid file type. Allowed: {", ".join(ALLOWED_EXTENSIONS)}'}), 400
 
         # Save uploaded file
         filename = secure_filename(file.filename)

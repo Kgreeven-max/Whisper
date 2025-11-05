@@ -12,19 +12,19 @@
         }
 
         :root {
-            --primary: #2563eb;
-            --primary-dark: #1e40af;
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
             --danger: #ef4444;
-            --bg: #f8fafc;
+            --bg: #fafaf9;
             --card-bg: #ffffff;
-            --text: #1e293b;
+            --text: #0f172a;
             --text-light: #64748b;
-            --border: #e2e8f0;
+            --border: #e7e5e4;
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg);
             color: var(--text);
             line-height: 1.6;
             min-height: 100vh;
@@ -36,13 +36,14 @@
 
         .auth-container {
             background: var(--card-bg);
-            border-radius: 1rem;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05), 0 10px 15px rgba(0, 0, 0, 0.1);
             width: 100%;
             max-width: 480px;
-            padding: 2.5rem;
+            padding: 3rem 2.5rem;
             max-height: 90vh;
             overflow-y: auto;
+            border: 1px solid var(--border);
         }
 
         .logo {
@@ -80,26 +81,28 @@
 
         .form-input {
             width: 100%;
-            padding: 0.75rem;
+            padding: 0.875rem 1rem;
             border: 1px solid var(--border);
-            border-radius: 0.5rem;
-            font-size: 1rem;
-            transition: border-color 0.2s, box-shadow 0.2s;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            transition: all 0.2s;
+            background: var(--bg);
         }
 
         .form-input:focus {
             outline: none;
             border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+            background: white;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
         }
 
         .btn {
             width: 100%;
-            padding: 0.875rem;
-            border-radius: 0.5rem;
+            padding: 1rem;
+            border-radius: 8px;
             border: none;
             font-weight: 600;
-            font-size: 1rem;
+            font-size: 0.95rem;
             cursor: pointer;
             transition: all 0.2s;
         }
@@ -107,12 +110,17 @@
         .btn-primary {
             background: var(--primary);
             color: white;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
         }
 
         .btn-primary:hover:not(:disabled) {
             background: var(--primary-dark);
             transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
         }
 
         .btn-primary:disabled {
@@ -353,6 +361,7 @@
                     headers: {
                         'Content-Type': 'application/json'
                     },
+                    credentials: 'include',
                     body: JSON.stringify(data)
                 });
 

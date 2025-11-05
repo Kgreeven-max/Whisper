@@ -198,7 +198,7 @@
 
 <script>
     // Load stats
-    fetch('/api/stats')
+    fetch('/api/stats', { credentials: 'include' })
         .then(r => r.json())
         .then(data => {
             document.getElementById('total-meetings').textContent = data.total;
@@ -224,6 +224,7 @@
                 headers: {
                     'Content-Type': 'application/json'
                 },
+                credentials: 'include',
                 body: JSON.stringify({ query })
             })
             .then(r => r.json())
