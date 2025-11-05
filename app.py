@@ -33,6 +33,18 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 live_sessions = {}
 
 # ============================================================
+# HELPER FUNCTIONS
+# ============================================================
+
+def no_cache_response(template_name, **context):
+    """Render template with no-cache headers to prevent stale content"""
+    response = make_response(render_template(template_name, **context))
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
+# ============================================================
 # TASK QUEUE SYSTEM (for resource management)
 # ============================================================
 
@@ -453,17 +465,17 @@ def jwt_required(f):
 @app.route('/auth/login', methods=['GET'])
 def login_page():
     """Serve login page"""
-    return render_template('login.html')
+    return no_cache_response('login.html')
 
 @app.route('/auth/register', methods=['GET'])
 def register_page():
     """Serve registration page"""
-    return render_template('register.html')
+    return no_cache_response('register.html')
 
 @app.route('/auth/forgot-password', methods=['GET'])
 def forgot_password_page():
     """Serve forgot password page"""
-    return render_template('forgot-password.html')
+    return no_cache_response('forgot-password.html')
 
 @app.route('/auth/register', methods=['POST'])
 def register():
@@ -833,7 +845,7 @@ def index():
             c.execute('SELECT * FROM meetings WHERE user_id = %s ORDER BY display_order, date DESC LIMIT 50', (user['id'],))
             meetings = c.fetchall()
 
-            return render_template('notion_dashboard.html', meetings=meetings, user={
+            return no_cache_response('notion_dashboard.html', meetings=meetings, user={
                 'user_id': user['id'],
                 'username': user['username'],
                 'email': user['email']
@@ -934,7 +946,7 @@ def calendar_view():
         # Get month name
         month_name = first_day.strftime('%B')
 
-        return render_template('notion_calendar.html',
+        return no_cache_response('notion_calendar.html',
                              calendar_days=calendar_days,
                              current_month=month_name,
                              current_year=year,
@@ -951,7 +963,7 @@ def table_view():
         c = conn.cursor()
         c.execute('SELECT * FROM meetings WHERE user_id = %s ORDER BY date DESC', (request.current_user['user_id'],))
         meetings = c.fetchall()
-        return render_template('notion_table.html', meetings=meetings, user=request.current_user)
+        return no_cache_response('notion_table.html', meetings=meetings, user=request.current_user)
     finally:
         conn.close()
 
@@ -959,7 +971,7 @@ def table_view():
 @jwt_required
 def settings():
     """User settings page"""
-    return render_template('notion_settings.html', user=request.current_user)
+    return no_cache_response('notion_settings.html', user=request.current_user)
 
 # ============================================================
 # Google Calendar Integration (Notion-style auto-record)
@@ -1428,7 +1440,7 @@ def upload_meeting():
             'queue_info': queue_info
         }), 202  # 202 Accepted - processing will happen asynchronously
 
-    return render_template('upload.html', user=request.current_user)
+    return no_cache_response('upload.html', user=request.current_user)
 
 def process_meeting_audio(audio_path, meeting_id, title):
     """Process audio through Whisper and Ollama"""
@@ -1626,7 +1638,7 @@ def view_meeting(meeting_id):
         meeting_data['action_items'] = json.loads(meeting['action_items'] or '[]')
         meeting_data['decisions'] = json.loads(meeting['decisions'] or '[]')
 
-        return render_template('notion_meeting.html', meeting=meeting_data, user=request.current_user)
+        return no_cache_response('notion_meeting.html', meeting=meeting_data, user=request.current_user)
     finally:
         conn.close()
 
@@ -2273,7 +2285,7 @@ DECISIONS:
 @jwt_required
 def live_recording_page():
     """Live recording interface"""
-    return render_template('live.html', user=request.current_user)
+    return no_cache_response('live.html', user=request.current_user)
 
 @app.route('/api/queue/status', methods=['GET'])
 @jwt_required
