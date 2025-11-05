@@ -205,7 +205,7 @@
 
         <div id="alert" class="alert"></div>
 
-        <form method="POST" action="/auth/login">
+        <form id="login-form">
             <div class="form-group">
                 <label class="form-label">Username</label>
                 <input
@@ -232,7 +232,7 @@
                 </div>
             </div>
 
-            <button type="submit" class="btn btn-primary">
+            <button type="submit" class="btn btn-primary" id="submit-btn">
                 Sign In
             </button>
         </form>
@@ -241,5 +241,46 @@
             Don't have an account? <a href="/auth/register">Sign up</a>
         </div>
     </div>
+
+    <script>
+        const form = document.getElementById('login-form');
+        const submitBtn = document.getElementById('submit-btn');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const formData = new FormData(form);
+            const username = formData.get('username');
+            const password = formData.get('password');
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Signing in...';
+
+            try {
+                const response = await fetch('/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ username, password })
+                });
+
+                if (response.ok) {
+                    // Redirect to dashboard
+                    window.location.href = '/';
+                } else {
+                    const error = await response.json();
+                    alert(error.error || 'Login failed');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Sign In';
+                }
+            } catch (error) {
+                alert('Network error. Please try again.');
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Sign In';
+            }
+        });
+    </script>
 </body>
 </html>

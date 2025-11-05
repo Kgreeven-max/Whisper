@@ -569,19 +569,10 @@ def register():
 @app.route('/auth/login', methods=['POST'])
 def login():
     """Login user"""
-    # Support both JSON and form submissions
-    if request.is_json:
-        data = request.json
-    else:
-        data = {
-            'username': request.form.get('username'),
-            'password': request.form.get('password')
-        }
+    data = request.json
 
     if not data or not data.get('username') or not data.get('password'):
-        if request.is_json:
-            return jsonify({'error': 'Username and password required'}), 400
-        return redirect(url_for('login_page'))
+        return jsonify({'error': 'Username and password required'}), 400
 
     username = data['username'].strip()
     password = data['password']
@@ -594,15 +585,11 @@ def login():
         user = c.fetchone()
 
         if not user:
-            if request.is_json:
-                return jsonify({'error': 'Invalid username or password'}), 401
-            return redirect(url_for('login_page'))
+            return jsonify({'error': 'Invalid username or password'}), 401
 
         # Verify password
         if not verify_password(password, user['password_hash']):
-            if request.is_json:
-                return jsonify({'error': 'Invalid username or password'}), 401
-            return redirect(url_for('login_page'))
+            return jsonify({'error': 'Invalid username or password'}), 401
 
         # Update last login
         c.execute('UPDATE users SET last_login = %s WHERE id = %s', (datetime.datetime.utcnow(), user['id']))
@@ -612,26 +599,22 @@ def login():
         access_token = generate_access_token(user['id'])
         refresh_token = generate_refresh_token(user['id'])
 
+        # Create response with tokens in cookies
+        response = make_response(jsonify({
+            'message': 'Login successful',
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'user': {
+                'id': user['id'],
+                'username': user['username'],
+                'email': user['email']
+            }
+        }), 200)
+
+        # Set httpOnly cookies for security
         # Detect if request came via HTTPS (from X-Forwarded-Proto header set by nginx/Cloudflare)
         is_secure = request.headers.get('X-Forwarded-Proto', 'http') == 'https'
 
-        # For form submissions, redirect to dashboard with cookies
-        if not request.is_json:
-            response = make_response(redirect('/'))
-        else:
-            # For JSON requests, return JSON response
-            response = make_response(jsonify({
-                'message': 'Login successful',
-                'access_token': access_token,
-                'refresh_token': refresh_token,
-                'user': {
-                    'id': user['id'],
-                    'username': user['username'],
-                    'email': user['email']
-                }
-            }), 200)
-
-        # Set httpOnly cookies for security
         response.set_cookie(
             'access_token',
             access_token,
@@ -839,7 +822,7 @@ def index():
 
     if not token:
         # Not authenticated - redirect to login
-        return redirect(url_for('login'))
+        return redirect(url_for('login_page'))
 
     try:
         # Verify token
